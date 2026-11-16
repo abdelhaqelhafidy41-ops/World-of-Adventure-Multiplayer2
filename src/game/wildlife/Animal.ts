@@ -169,6 +169,7 @@ export abstract class Animal {
     amount: number,
     attackerX: number,
     attackerZ: number,
+    attackerId?: string,
   ): AnimalDamageResult {
     if (this.isDead || amount <= 0) {
       return { damaged: false, killed: false, remainingHp: this.hp };
@@ -194,7 +195,7 @@ export abstract class Animal {
     if (this.diet === 'predator') {
       // Predators turn to chase and fight back when attacked
       this.aggroPlayerTimer = 14.0;
-      this.blackboard.chaseTargetId = 'player';
+      this.blackboard.chaseTargetId = attackerId ?? 'player';
       this.blackboard.targetX = attackerX;
       this.blackboard.targetZ = attackerZ;
       this.blackboard.hasTarget = true;
@@ -269,6 +270,7 @@ export abstract class Animal {
     dead: boolean,
     attackerX?: number,
     attackerZ?: number,
+    attackerId?: string,
   ): boolean {
     const clampedHp = Math.max(0, Math.min(maxHp || this.maxHp, hp));
     this.hp = clampedHp;
@@ -299,7 +301,7 @@ export abstract class Animal {
     ) {
       if (this.diet === 'predator') {
         this.aggroPlayerTimer = 14.0;
-        this.blackboard.chaseTargetId = 'player';
+        this.blackboard.chaseTargetId = attackerId ?? 'player';
         this.blackboard.targetX = attackerX;
         this.blackboard.targetZ = attackerZ;
         this.blackboard.hasTarget = true;
@@ -310,6 +312,13 @@ export abstract class Animal {
     }
 
     return false;
+  }
+
+  public getChasingPlayerId(): string | undefined {
+    if (this.diet === 'predator' && this.aggroPlayerTimer > 0 && this.blackboard.chaseTargetId) {
+      return this.blackboard.chaseTargetId;
+    }
+    return undefined;
   }
 
   /**
@@ -484,31 +493,93 @@ export abstract class Animal {
     bb.hunger = Math.min(1, bb.hunger + stepDt * 0.014);
     bb.fatigue = Math.min(1, bb.fatigue + stepDt * 0.008);
 
-    const pDx = ctx.playerPos.x - this.position.x;
-    const pDz = ctx.playerPos.z - this.position.z;
-    const playerDistSq = pDx * pDx + pDz * pDz;
-
-    // Provoked predator counter-attacking player
+    // Provoked predator counter-attacking local or remote players
     if (this.diet === 'predator' && this.aggroPlayerTimer > 0) {
-      if (playerDistSq > 34 * 34) {
+      const localId = ctx.localPlayerId ?? 'player';
+      const candidates: Array<{
+        id: string;
+        x: number;
+        z: number;
+        isLocal: boolean;
+        dSq: number;
+      }> = [];
+
+      if (!ctx.isVillageClearance(ctx.playerPos.x, ctx.playerPos.z)) {
+        const dx = ctx.playerPos.x - this.position.x;
+        const dz = ctx.playerPos.z - this.position.z;
+        candidates.push({
+          id: localId,
+          x: ctx.playerPos.x,
+          z: ctx.playerPos.z,
+          isLocal: true,
+          dSq: dx * dx + dz * dz,
+        });
+      }
+
+      if (ctx.remoteTargets) {
+        for (let i = 0; i < ctx.remoteTargets.length; i++) {
+          const rt = ctx.remoteTargets[i];
+          if (!rt.isAlive) continue;
+          if (ctx.isVillageClearance(rt.position.x, rt.position.z)) continue;
+          const dx = rt.position.x - this.position.x;
+          const dz = rt.position.z - this.position.z;
+          candidates.push({
+            id: rt.playerId,
+            x: rt.position.x,
+            z: rt.position.z,
+            isLocal: false,
+            dSq: dx * dx + dz * dz,
+          });
+        }
+      }
+
+      let chosen =
+        candidates.find(
+          (c) =>
+            (c.id === bb.chaseTargetId ||
+              (bb.chaseTargetId === 'player' && c.isLocal)) &&
+            c.dSq <= 34 * 34,
+        ) ?? null;
+
+      if (!chosen) {
+        let bestDistSq = 34 * 34;
+        for (let i = 0; i < candidates.length; i++) {
+          if (candidates[i].dSq <= bestDistSq) {
+            bestDistSq = candidates[i].dSq;
+            chosen = candidates[i];
+          }
+        }
+      }
+
+      if (!chosen) {
         this.aggroPlayerTimer = 0;
         this.enterState('idle', 2.0);
         return;
       }
-      bb.chaseTargetId = 'player';
-      bb.targetX = ctx.playerPos.x;
-      bb.targetZ = ctx.playerPos.z;
+
+      bb.chaseTargetId = chosen.id;
+      bb.targetX = chosen.x;
+      bb.targetZ = chosen.z;
       bb.hasTarget = true;
       this.behaviorState = 'chase';
       bb.stateTimer = Math.max(bb.stateTimer, 1.5);
 
       const strikeRange = this.traits.bodyRadius + 1.65;
       if (
-        playerDistSq <= strikeRange * strikeRange &&
+        chosen.dSq <= strikeRange * strikeRange &&
         this.playerAttackCooldown <= 0
       ) {
         this.playerAttackCooldown = 1.45;
-        ctx.onPredatorHitPlayer?.(this.id, this.species, this.traits.attackDamage);
+        if (chosen.isLocal) {
+          ctx.onPredatorHitPlayer?.(this.id, this.species, this.traits.attackDamage);
+        } else {
+          ctx.onPredatorHitRemotePlayer?.(
+            this.id,
+            this.species,
+            this.traits.attackDamage,
+            chosen.id,
+          );
+        }
       }
       return;
     }
@@ -795,8 +866,11 @@ export abstract class Animal {
       const dz = bb.targetZ - this.position.z;
       const dist = Math.hypot(dx, dz);
 
-      if (dist < (bb.chaseTargetId === 'player' ? this.traits.bodyRadius + 1.15 : 1.1)) {
-        if (bb.chaseTargetId !== 'player') {
+      const chasingPlayer =
+        bb.chaseTargetId !== null &&
+        (bb.chaseTargetId === 'player' || this.aggroPlayerTimer > 0);
+      if (dist < (chasingPlayer ? this.traits.bodyRadius + 1.15 : 1.1)) {
+        if (!chasingPlayer) {
           bb.hasTarget = false;
           if (this.behaviorState === 'wander') {
             this.enterState('idle', 1.8 + this.nextRand() * 3.0);

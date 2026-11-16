@@ -32,6 +32,7 @@ import {
   type AnimalLootDrop,
   type AnimalSpecies,
   type NearbyAnimalEntry,
+  type RemoteWildlifePlayerTarget,
   type WildlifeTickContext,
 } from './wildlifeTypes';
 
@@ -146,6 +147,7 @@ export class WildlifeManager {
   private farPause = false;
   private visibleAnimalCount = 0;
   private networkRemoteControlled = false;
+  private remoteTargets: RemoteWildlifePlayerTarget[] = [];
   private readonly lastSyncSnapshot = new Map<
     string,
     { x: number; y: number; z: number; yaw: number; state: string; hp: number; isDead: boolean }
@@ -207,6 +209,22 @@ export class WildlifeManager {
     for (let i = 0; i < this.animals.length; i++) {
       this.animals[i].setNetworkRemoteControlled(remote);
     }
+  }
+
+  public setMultiplayerTargets(
+    localPlayerId: string | undefined,
+    remoteTargets: RemoteWildlifePlayerTarget[],
+    onPredatorHitRemotePlayer?: (
+      animalId: string,
+      species: AnimalSpecies,
+      damage: number,
+      targetPlayerId: string,
+    ) => void,
+  ): void {
+    this.remoteTargets = remoteTargets;
+    this.tickCtx.localPlayerId = localPlayerId;
+    this.tickCtx.remoteTargets = remoteTargets;
+    this.tickCtx.onPredatorHitRemotePlayer = onPredatorHitRemotePlayer;
   }
 
   public exportKilledAnimalIds(): string[] {
@@ -673,12 +691,13 @@ export class WildlifeManager {
     amount: number,
     attackerX: number,
     attackerZ: number,
+    attackerId?: string,
   ): { hit: boolean; killed: boolean; species?: AnimalSpecies; drops?: AnimalLootDrop[] } {
     for (let i = 0; i < this.animals.length; i++) {
       const a = this.animals[i];
       if (a.id !== animalId) continue;
 
-      const res = a.takeDamage(amount, attackerX, attackerZ);
+      const res = a.takeDamage(amount, attackerX, attackerZ, attackerId);
       if (!res.damaged) return { hit: false, killed: false };
 
       if (res.killed) {
@@ -701,6 +720,7 @@ export class WildlifeManager {
     spawnDrops: boolean,
     attackerX?: number,
     attackerZ?: number,
+    attackerId?: string,
   ): { hit: boolean; killed: boolean; justKilled: boolean; species?: AnimalSpecies; drops?: AnimalLootDrop[] } {
     const a = this.animals.find((item) => item.id === animalId);
     if (!a) {
@@ -710,7 +730,14 @@ export class WildlifeManager {
       return { hit: false, killed, justKilled: false };
     }
 
-    const justKilled = a.applyAuthoritativeHealth(hp, maxHp, killed, attackerX, attackerZ);
+    const justKilled = a.applyAuthoritativeHealth(
+      hp,
+      maxHp,
+      killed,
+      attackerX,
+      attackerZ,
+      attackerId,
+    );
     if (killed || justKilled) {
       this.killedAnimalIds.add(a.id);
     }
@@ -793,6 +820,7 @@ export class WildlifeManager {
         hp: a.hp,
         maxHp: a.maxHp,
         isDead: a.isDead,
+        targetPlayerId: a.getChasingPlayerId(),
       });
     }
 
@@ -1015,6 +1043,20 @@ export class WildlifeManager {
       const a = this.animals[i];
       const hasRig = a.rig !== null;
 
+      let nearRemote = false;
+      if (!this.networkRemoteControlled && !hasRig && !a.isDead && this.remoteTargets.length > 0) {
+        for (let r = 0; r < this.remoteTargets.length; r++) {
+          const rt = this.remoteTargets[r];
+          if (!rt.isAlive) continue;
+          const rdx = a.position.x - rt.position.x;
+          const rdz = a.position.z - rt.position.z;
+          if (rdx * rdx + rdz * rdz <= this.midLodDistSq) {
+            nearRemote = true;
+            break;
+          }
+        }
+      }
+
       if (hasRig) {
         ctx.isNearPlayer = true;
         if (!this.networkRemoteControlled && !a.isDead && (i & 3) === (this.frameCounter & 3)) {
@@ -1048,6 +1090,13 @@ export class WildlifeManager {
           _tempColor.setHex(palette[a.variant % palette.length]);
           mesh.setColorAt(idx, _tempColor);
           this.lodCounts[a.species] = idx + 1;
+        }
+      } else if (nearRemote && !a.isDead) {
+        ctx.isNearPlayer = false;
+        if (i % 6 === this.frameCounter % 6) {
+          const stepDt = clampedDt * 6;
+          a.decideBehavior(stepDt, ctx);
+          a.stepKinematics(stepDt, elapsed, ctx);
         }
       } else if (!this.farPause && !a.isDead) {
         ctx.isNearPlayer = false;

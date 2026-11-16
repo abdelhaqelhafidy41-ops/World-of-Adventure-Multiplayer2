@@ -1,4 +1,5 @@
 import {
+  MAX_WEATHER_DURATION_MS,
   MAX_WS_MESSAGE_BYTES,
   MULTIPLAYER_PROTOCOL_VERSION,
   isValidClientMessageType,
@@ -11,13 +12,28 @@ import {
   validatePlayerReportPayload,
   validatePlayerStatePayload,
   type ClientMessageType,
+  type EnemyAttackPlayerPayload,
   type EntitySyncBatchPayload,
   type GameEventPayload,
   type NetworkEnvelope,
   type PlayerNetworkState,
   type PlayerReportPayload,
+  type RepairWeaponsPayload,
   type UpdateRoomSettingsPayload,
+  type WorldSettingsUpdatePayload,
+  type WorldTimePreset,
+  type WorldWeatherState,
 } from '../../../shared/multiplayerProtocol';
+
+const VALID_TIME_PRESETS = new Set<WorldTimePreset>(['sunrise', 'noon', 'sunset', 'midnight']);
+const VALID_WEATHER_STATES = new Set<WorldWeatherState>([
+  'clear',
+  'cloudy',
+  'overcast',
+  'rain',
+  'storm',
+  'fog',
+]);
 
 export interface ValidatedClientEnvelope {
   type: ClientMessageType;
@@ -34,6 +50,9 @@ export interface ValidatedClientEnvelope {
   displayName?: string;
   targetPlayerId?: string;
   roomSettings?: UpdateRoomSettingsPayload;
+  worldSettingsUpdate?: WorldSettingsUpdatePayload;
+  enemyAttackPlayer?: EnemyAttackPlayerPayload;
+  repairWeapons?: RepairWeaponsPayload;
   pingId?: number;
   clientSentAt?: number;
 }
@@ -152,7 +171,8 @@ export function validateClientMessage(
       env.type === 'TRANSFER_HOST' ||
       env.type === 'UPDATE_ROOM_SETTINGS' ||
       env.type === 'CLOSE_ROOM' ||
-      env.type === 'ENTITY_SYNC') &&
+      env.type === 'ENTITY_SYNC' ||
+      env.type === 'ENEMY_ATTACK_PLAYER') &&
     !isPlayerHost
   ) {
     return {
@@ -252,6 +272,133 @@ export function validateClientMessage(
       };
     }
     msg.roomSettings = { requireAllReady: payload.requireAllReady };
+  } else if (env.type === 'WORLD_SETTINGS_UPDATE') {
+    const payload = env.payload as Record<string, unknown> | undefined;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return {
+        ok: false,
+        code: 'INVALID_WORLD_SETTINGS',
+        reason: 'WORLD_SETTINGS_UPDATE payload must be an object.',
+      };
+    }
+    const upd: WorldSettingsUpdatePayload = {};
+    if (
+      payload.worldSettingsPermission === 'HOST_ONLY' ||
+      payload.worldSettingsPermission === 'ALL_PLAYERS'
+    ) {
+      upd.worldSettingsPermission = payload.worldSettingsPermission;
+    }
+    if (
+      typeof payload.preset === 'string' &&
+      VALID_TIME_PRESETS.has(payload.preset as WorldTimePreset)
+    ) {
+      upd.preset = payload.preset as WorldTimePreset;
+    }
+    if (typeof payload.worldHours === 'number' && Number.isFinite(payload.worldHours)) {
+      upd.worldHours = ((payload.worldHours % 24) + 24) % 24;
+    }
+    if (typeof payload.dayCount === 'number' && Number.isFinite(payload.dayCount)) {
+      upd.dayCount = Math.max(1, Math.min(99_999, Math.floor(payload.dayCount)));
+    }
+    if (typeof payload.timeScale === 'number' && Number.isFinite(payload.timeScale)) {
+      upd.timeScale = Math.max(0.1, Math.min(20, Math.round(payload.timeScale * 100) / 100));
+    }
+    if (typeof payload.paused === 'boolean') {
+      upd.paused = payload.paused;
+    }
+    if (
+      typeof payload.fullDayDurationSeconds === 'number' &&
+      Number.isFinite(payload.fullDayDurationSeconds)
+    ) {
+      upd.fullDayDurationSeconds = Math.max(
+        60,
+        Math.min(1200, Math.round(payload.fullDayDurationSeconds)),
+      );
+    }
+    if (
+      typeof payload.weatherState === 'string' &&
+      VALID_WEATHER_STATES.has(payload.weatherState as WorldWeatherState)
+    ) {
+      upd.weatherState = payload.weatherState as WorldWeatherState;
+    }
+    if (
+      typeof payload.targetWeatherState === 'string' &&
+      VALID_WEATHER_STATES.has(payload.targetWeatherState as WorldWeatherState)
+    ) {
+      upd.targetWeatherState = payload.targetWeatherState as WorldWeatherState;
+    }
+    if (
+      typeof payload.weatherIntensity === 'number' &&
+      Number.isFinite(payload.weatherIntensity)
+    ) {
+      upd.weatherIntensity = Math.max(0, Math.min(1, Math.round(payload.weatherIntensity * 100) / 100));
+    }
+    if (typeof payload.dynamicEnabled === 'boolean') {
+      upd.dynamicEnabled = payload.dynamicEnabled;
+    }
+    if (
+      typeof payload.transitionDurationSeconds === 'number' &&
+      Number.isFinite(payload.transitionDurationSeconds)
+    ) {
+      upd.transitionDurationSeconds = Math.max(
+        2,
+        Math.min(40, Math.round(payload.transitionDurationSeconds)),
+      );
+    }
+    if (typeof payload.durationMs === 'number' && Number.isFinite(payload.durationMs)) {
+      upd.durationMs = Math.max(5_000, Math.min(MAX_WEATHER_DURATION_MS, Math.round(payload.durationMs)));
+    }
+    if (typeof payload.triggerLightning === 'boolean') {
+      upd.triggerLightning = payload.triggerLightning;
+    }
+    msg.worldSettingsUpdate = upd;
+  } else if (env.type === 'ENEMY_ATTACK_PLAYER') {
+    const payload = env.payload as Record<string, unknown> | undefined;
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      !isValidPlayerId(payload.targetPlayerId) ||
+      (payload.sourceKind !== 'enemy' && payload.sourceKind !== 'animal') ||
+      typeof payload.sourceId !== 'string' ||
+      payload.sourceId.length === 0 ||
+      typeof payload.damage !== 'number' ||
+      !Number.isFinite(payload.damage)
+    ) {
+      return {
+        ok: false,
+        code: 'INVALID_ENEMY_ATTACK',
+        reason: 'ENEMY_ATTACK_PLAYER requires valid targetPlayerId, sourceKind, sourceId, and damage.',
+      };
+    }
+    msg.enemyAttackPlayer = {
+      targetPlayerId: payload.targetPlayerId,
+      sourceKind: payload.sourceKind,
+      sourceId: payload.sourceId.slice(0, 64),
+      ...(typeof payload.archetype === 'string'
+        ? { archetype: payload.archetype.slice(0, 32) }
+        : {}),
+      damage: Math.max(1, Math.min(65, Math.round(payload.damage))),
+      ...(typeof payload.x === 'number' && Number.isFinite(payload.x) ? { x: payload.x } : {}),
+      ...(typeof payload.z === 'number' && Number.isFinite(payload.z) ? { z: payload.z } : {}),
+    };
+  } else if (env.type === 'REPAIR_WEAPONS') {
+    const payload = env.payload as Record<string, unknown> | undefined;
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      typeof payload.costCoins !== 'number' ||
+      !Number.isFinite(payload.costCoins) ||
+      payload.costCoins <= 0
+    ) {
+      return {
+        ok: false,
+        code: 'INVALID_REPAIR_REQUEST',
+        reason: 'REPAIR_WEAPONS requires a positive costCoins amount.',
+      };
+    }
+    msg.repairWeapons = {
+      costCoins: Math.max(1, Math.min(500, Math.round(payload.costCoins))),
+    };
   } else if (env.type === 'START_GAME') {
     if (env.payload !== undefined) {
       return {

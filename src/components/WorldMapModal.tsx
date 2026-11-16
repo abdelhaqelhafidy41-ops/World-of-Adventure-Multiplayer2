@@ -758,6 +758,24 @@ export const WorldMapModal: React.FC<WorldMapModalProps> = ({
                 </div>
               </div>
 
+              {/* Friend & Room Player Pins Toggle */}
+              <LegendToggleRow
+                active={!hiddenCategories.has('players')}
+                onClick={() => toggleCategory('players')}
+                label={t.mapLegendFriend}
+                swatch={
+                  <span className="w-3 h-3 rounded-full bg-[#4ade80] border border-[#09140e] ring-2 ring-[#4ade80]/40 inline-block" />
+                }
+              />
+              <LegendToggleRow
+                active={!hiddenCategories.has('players')}
+                onClick={() => toggleCategory('players')}
+                label={t.mapLegendRoomPlayer}
+                swatch={
+                  <span className="w-3 h-3 rounded-full bg-[#38bdf8] border border-[#09140e] inline-block" />
+                }
+              />
+
               {/* Village Toggle */}
               <LegendToggleRow
                 active={!hiddenCategories.has('village')}

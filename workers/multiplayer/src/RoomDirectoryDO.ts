@@ -5,6 +5,7 @@ import type {
 import {
   MAX_PLAYERS_PER_ROOM,
   MIN_PLAYERS_PER_ROOM,
+  ROOM_INACTIVE_TIMEOUT_MS,
   isValidRoomCode,
   isValidRoomId,
   sanitizeDisplayName,
@@ -35,11 +36,12 @@ export interface DirectoryRoomEntry {
   hasPassword: boolean;
   createdAt: number;
   updatedAt: number;
+  lastActivityAt?: number;
+  expiresAt?: number;
 }
 
 const DIRECTORY_STORAGE_KEY = 'room_directory_v1';
 const INVITES_STORAGE_KEY = 'room_invites_v1';
-const STALE_ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 const INVITE_TTL_MS = 30 * 60 * 1000;
 const MAX_DIRECTORY_ROOMS = 500;
 const MAX_INVITES_TOTAL = 2000;
@@ -66,13 +68,22 @@ export class RoomDirectoryDO {
     this.ctx = ctx;
   }
 
+  private isEntryExpired(entry: DirectoryRoomEntry, nowMs = Date.now()): boolean {
+    if (entry.status === 'closed') return true;
+    const exp =
+      typeof entry.expiresAt === 'number' && Number.isFinite(entry.expiresAt)
+        ? entry.expiresAt
+        : (entry.lastActivityAt ?? entry.updatedAt) + ROOM_INACTIVE_TIMEOUT_MS;
+    return nowMs >= exp;
+  }
+
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
     const saved = await this.ctx.storage.get<DirectoryRoomEntry[]>(DIRECTORY_STORAGE_KEY);
     const now = Date.now();
     if (Array.isArray(saved)) {
       for (const entry of saved) {
-        if (entry?.roomId && now - entry.updatedAt < STALE_ROOM_TTL_MS) {
+        if (entry?.roomId && !this.isEntryExpired(entry, now)) {
           this.rooms.set(entry.roomId, entry);
           if (entry.roomCode) {
             this.codeToRoomId.set(entry.roomCode.toUpperCase(), entry.roomId);
@@ -91,15 +102,17 @@ export class RoomDirectoryDO {
     this.loaded = true;
   }
 
-  private async persist(): Promise<void> {
-    const now = Date.now();
+  private async persist(nowMs = Date.now()): Promise<number> {
+    let purged = 0;
     for (const [id, entry] of this.rooms) {
-      if (now - entry.updatedAt >= STALE_ROOM_TTL_MS || entry.playerCount < 0) {
+      if (this.isEntryExpired(entry, nowMs) || entry.playerCount < 0) {
         this.rooms.delete(id);
         this.codeToRoomId.delete(entry.roomCode.toUpperCase());
+        purged += 1;
       }
     }
     await this.ctx.storage.put(DIRECTORY_STORAGE_KEY, Array.from(this.rooms.values()));
+    return purged;
   }
 
   private async persistInvites(): Promise<void> {
@@ -115,18 +128,32 @@ export class RoomDirectoryDO {
   public async fetch(request: Request): Promise<Response> {
     await this.ensureLoaded();
     const url = new URL(request.url);
+    const now = Date.now();
+
+    if (request.method === 'POST' && url.pathname === '/expire-sweep') {
+      const body = (await request.json().catch(() => null)) as { nowMs?: number } | null;
+      const evalNow =
+        typeof body?.nowMs === 'number' && Number.isFinite(body.nowMs) ? body.nowMs : now;
+      const purged = await this.persist(evalNow);
+      return Response.json({ ok: true, purged, remaining: this.rooms.size });
+    }
 
     if (request.method === 'GET' && url.pathname === '/list') {
       const publicRooms = Array.from(this.rooms.values())
         .filter(
           (r) =>
+            !this.isEntryExpired(r, now) &&
             !r.isPrivate &&
             !r.locked &&
             r.privacy === 'public' &&
-            r.status === 'waiting' &&
-            r.playerCount > 0,
+            r.status === 'waiting',
         )
-        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .sort((a, b) => {
+          const aPop = a.playerCount > 0 ? 1 : 0;
+          const bPop = b.playerCount > 0 ? 1 : 0;
+          if (aPop !== bPop) return bPop - aPop;
+          return b.updatedAt - a.updatedAt;
+        })
         .slice(0, 50);
       return Response.json({ ok: true, rooms: publicRooms });
     }
@@ -137,12 +164,13 @@ export class RoomDirectoryDO {
         return Response.json({ ok: false, error: 'MISSING_ROOM_QUERY' }, { status: 400 });
       }
       const byId = this.rooms.get(q);
-      if (byId) {
+      if (byId && !this.isEntryExpired(byId, now)) {
         return Response.json({ ok: true, roomId: byId.roomId });
       }
       const byCodeId = this.codeToRoomId.get(q.toUpperCase());
-      if (byCodeId && this.rooms.has(byCodeId)) {
-        return Response.json({ ok: true, roomId: byCodeId });
+      const byCodeRoom = byCodeId ? this.rooms.get(byCodeId) : undefined;
+      if (byCodeRoom && !this.isEntryExpired(byCodeRoom, now)) {
+        return Response.json({ ok: true, roomId: byCodeRoom.roomId });
       }
       return Response.json(
         { ok: false, error: 'ROOM_NOT_FOUND', message: 'ROOM NOT FOUND' },
@@ -154,12 +182,12 @@ export class RoomDirectoryDO {
       const openRoom = Array.from(this.rooms.values())
         .filter(
           (r) =>
+            !this.isEntryExpired(r, now) &&
             !r.isPrivate &&
             !r.locked &&
             r.privacy === 'public' &&
             r.status === 'waiting' &&
             !r.hasPassword &&
-            r.playerCount > 0 &&
             r.playerCount < r.maxPlayers,
         )
         .sort((a, b) => b.playerCount - a.playerCount || b.updatedAt - a.updatedAt)[0];
@@ -196,15 +224,26 @@ export class RoomDirectoryDO {
         0,
         Math.min(maxPlayers, Math.round(Number(body.playerCount) || 0)),
       );
+      const updatedAt = Date.now();
+      const lastActivityAt =
+        typeof body.lastActivityAt === 'number' && Number.isFinite(body.lastActivityAt)
+          ? body.lastActivityAt
+          : updatedAt;
+      const expiresAt =
+        typeof body.expiresAt === 'number' && Number.isFinite(body.expiresAt)
+          ? body.expiresAt
+          : lastActivityAt + ROOM_INACTIVE_TIMEOUT_MS;
       const entry: DirectoryRoomEntry = {
         ...body,
         roomCode: body.roomCode.trim().toUpperCase(),
         roomName: sanitizeRoomName(body.roomName, 'World of Adventure'),
-        hostName: sanitizeDisplayName(body.hostName, 'Host'),
+        hostName: body.hostName ? sanitizeDisplayName(body.hostName, 'Open') : '',
         worldName: sanitizeRoomName(body.worldName, 'Oakhollow Valley'),
         maxPlayers,
         playerCount,
-        updatedAt: Date.now(),
+        updatedAt,
+        lastActivityAt,
+        expiresAt,
       };
       this.rooms.set(entry.roomId, entry);
       this.codeToRoomId.set(entry.roomCode, entry.roomId);

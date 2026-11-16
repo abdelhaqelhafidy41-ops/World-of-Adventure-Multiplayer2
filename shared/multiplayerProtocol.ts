@@ -23,10 +23,15 @@ export const HEARTBEAT_TIMEOUT_MS = 45_000;
 export const HOST_DISCONNECT_GRACE_MS = 12_000;
 export const PLAYER_RECONNECT_GRACE_MS = 45_000;
 export const MAX_RECONNECT_ATTEMPTS = 6;
+export const ROOM_INACTIVE_TIMEOUT_MS = 72 * 60 * 60 * 1000;
+export const MAX_WEATHER_DURATION_MS = 900_000;
 
 export type RoomPrivacy = 'public' | 'friends' | 'private';
-export type RoomStatus = 'waiting' | 'starting' | 'in-game';
+export type RoomStatus = 'waiting' | 'starting' | 'in-game' | 'closed';
 export type ConnectionQuality = 'excellent' | 'good' | 'poor' | 'disconnected';
+export type WorldSettingsPermission = 'HOST_ONLY' | 'ALL_PLAYERS';
+export type WorldTimePreset = 'sunrise' | 'noon' | 'sunset' | 'midnight';
+export type WorldWeatherState = 'clear' | 'cloudy' | 'overcast' | 'rain' | 'storm' | 'fog';
 
 export const AVATAR_PALETTE = [
   '#3b82f6',
@@ -233,12 +238,73 @@ export interface SyncedEntityDelta {
   isDead?: boolean;
   tx?: number;
   tz?: number;
+  targetPlayerId?: string;
 }
 
 export interface EntitySyncBatchPayload {
   entities: SyncedEntityDelta[];
   worldHours?: number;
   weather?: string;
+}
+
+export interface AuthoritativeWorldTimeState {
+  worldHours: number;
+  dayCount: number;
+  timeScale: number;
+  paused: boolean;
+  fullDayDurationSeconds: number;
+  anchorServerMs: number;
+}
+
+export interface AuthoritativeWorldWeatherState {
+  currentState: WorldWeatherState;
+  targetState: WorldWeatherState;
+  intensity: number;
+  dynamicEnabled: boolean;
+  transitionDurationSeconds: number;
+  startMs: number;
+  durationMs: number;
+  endMs: number;
+}
+
+export interface AuthoritativeProgressionState {
+  playerId: string;
+  coins: number;
+  xp: number;
+  level: number;
+  xpToNextLevel: number;
+  reason?: string;
+}
+
+export interface WorldSettingsUpdatePayload {
+  worldSettingsPermission?: WorldSettingsPermission;
+  preset?: WorldTimePreset;
+  worldHours?: number;
+  dayCount?: number;
+  timeScale?: number;
+  paused?: boolean;
+  fullDayDurationSeconds?: number;
+  weatherState?: WorldWeatherState;
+  targetWeatherState?: WorldWeatherState;
+  weatherIntensity?: number;
+  dynamicEnabled?: boolean;
+  transitionDurationSeconds?: number;
+  durationMs?: number;
+  triggerLightning?: boolean;
+}
+
+export interface EnemyAttackPlayerPayload {
+  targetPlayerId: string;
+  sourceKind: 'enemy' | 'animal';
+  sourceId: string;
+  archetype?: string;
+  damage: number;
+  x?: number;
+  z?: number;
+}
+
+export interface RepairWeaponsPayload {
+  costCoins: number;
 }
 
 export interface RoomWorldSnapshotPayload {
@@ -274,7 +340,15 @@ export interface RoomWorldSnapshotPayload {
   deadEntities: Array<{ id: string; kind: SyncedEntityKind }>;
   worldHours?: number;
   weather?: string;
+  worldTime?: AuthoritativeWorldTimeState;
+  worldWeather?: AuthoritativeWorldWeatherState;
+  worldSettingsPermission?: WorldSettingsPermission;
+  serverTimestamp?: number;
   ammoCount?: number;
+  coins?: number;
+  xp?: number;
+  level?: number;
+  xpToNextLevel?: number;
 }
 
 /**
@@ -297,6 +371,9 @@ export const CLIENT_MESSAGE_TYPES = [
   'KICK_PLAYER',
   'TRANSFER_HOST',
   'UPDATE_ROOM_SETTINGS',
+  'WORLD_SETTINGS_UPDATE',
+  'ENEMY_ATTACK_PLAYER',
+  'REPAIR_WEAPONS',
   'CLOSE_ROOM',
 ] as const;
 
@@ -337,10 +414,17 @@ export const SERVER_MESSAGE_TYPES = [
   'LEAVE_ROOM',
   'PLAYER_STATE',
   'PLAYER_VITALS',
+  'PROGRESSION_UPDATED',
   'POSITION_CORRECTION',
   'GAME_EVENT',
   'ENTITY_SYNC',
   'WORLD_SNAPSHOT',
+  'WORLD_TIME_CHANGED',
+  'WORLD_DAY_CHANGED',
+  'WORLD_TIME_SCALE_CHANGED',
+  'WORLD_WEATHER_CHANGED',
+  'WORLD_WEATHER_INTENSITY_CHANGED',
+  'WORLD_SETTINGS_UPDATED',
   'ROOM_CHAT',
   'CHAT_HISTORY',
   'REPORT_ACK',
@@ -447,6 +531,7 @@ export interface RoomGameState {
   isPrivate: boolean;
   allowFriends: boolean;
   requireAllReady: boolean;
+  worldSettingsPermission?: WorldSettingsPermission;
   worldSettings?: AuthoritativeWorldSettings;
   locked: boolean;
   hasPassword: boolean;
@@ -465,6 +550,13 @@ export interface AuthoritativeRoomSnapshot {
   status: RoomStatus;
   gameState: RoomGameState;
   createdAt: number;
+  lastActivityAt?: number;
+  lastPlayerJoinedAt?: number | null;
+  lastPlayerLeftAt?: number | null;
+  expiresAt?: number;
+  worldTime?: AuthoritativeWorldTimeState;
+  worldWeather?: AuthoritativeWorldWeatherState;
+  serverTimestamp?: number;
 }
 
 export interface NetworkEnvelope<
@@ -1014,6 +1106,9 @@ export function validateEntitySyncBatchPayload(
     if (typeof rec.isDead === 'boolean') {
       delta.isDead = rec.isDead;
     }
+    if (typeof rec.targetPlayerId === 'string' && isValidPlayerId(rec.targetPlayerId)) {
+      delta.targetPlayerId = rec.targetPlayerId;
+    }
     sanitized.push(delta);
   }
 
@@ -1030,6 +1125,9 @@ export function validateEntitySyncBatchPayload(
 export function sanitizeChatText(raw: unknown): string {
   if (typeof raw !== 'string') return '';
   return raw
+    .replace(/<\s*script\b[^>]*>[\s\S]*?<\s*\/\s*script\s*>/gi, ' ')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/[<>]/g, '')
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
     .replace(/\r\n?/g, ' ')
     .replace(/\n/g, ' ')

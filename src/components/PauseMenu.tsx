@@ -25,6 +25,7 @@ import {
   VolumeX,
 } from 'lucide-react';
 import type { GameSettings } from '../game/types';
+import type { WorldSettingsPermission } from '../../shared/multiplayerProtocol';
 import type { TimePreset, TimeSnapshot } from '../game/world/TimeManager';
 import {
   WEATHER_LABELS,
@@ -63,6 +64,11 @@ interface PauseMenuProps {
   onSetWeatherDynamic?: (enabled: boolean) => void;
   onSetWeatherTransitionDuration?: (seconds: number) => void;
   onSetWeatherQuality?: (quality: WeatherQuality) => void;
+  isMultiplayer?: boolean;
+  isHost?: boolean;
+  worldSettingsPermission?: WorldSettingsPermission;
+  canControlWorldSettings?: boolean;
+  onSetWorldSettingsPermission?: (permission: WorldSettingsPermission) => void;
 }
 
 export const PauseMenu: React.FC<PauseMenuProps> = ({
@@ -91,6 +97,11 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
   onSetWeatherDynamic,
   onSetWeatherTransitionDuration,
   onSetWeatherQuality,
+  isMultiplayer = false,
+  isHost = false,
+  worldSettingsPermission = 'HOST_ONLY',
+  canControlWorldSettings = true,
+  onSetWorldSettingsPermission,
 }) => {
   const t = UI_TEXT[lang];
   const isRtl = lang === 'ar';
@@ -353,6 +364,58 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
                 </button>
               </div>
 
+              {/* Multiplayer Time & Weather Permission Controls */}
+              {isMultiplayer && (
+                <div className="pt-3 border-t border-[#24382d] space-y-2">
+                  <div className="flex items-center justify-between gap-2 text-xs font-semibold text-[#f1f5ee]">
+                    <span>{t.mpWorldSettingsPermissionLabel}</span>
+                    {!isHost && (
+                      <span className="text-[11px] font-medium text-[#e5a93c]">
+                        {worldSettingsPermission === 'ALL_PLAYERS'
+                          ? t.mpWorldSettingsAllPlayers
+                          : t.mpWorldSettingsHostOnly}
+                      </span>
+                    )}
+                  </div>
+                  {isHost && (
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        data-testid="pause-world-perm-host-only"
+                        onClick={() => onSetWorldSettingsPermission?.('HOST_ONLY')}
+                        className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium cursor-pointer ${
+                          worldSettingsPermission === 'HOST_ONLY'
+                            ? 'bg-[#22392c] border-[#e5a93c]/85 text-[#ffffff]'
+                            : 'bg-[#16261d] hover:bg-[#1e3328] border-[#2c4637] text-[#cddacb]'
+                        }`}
+                      >
+                        {t.mpWorldSettingsHostOnly}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="pause-world-perm-all-players"
+                        onClick={() => onSetWorldSettingsPermission?.('ALL_PLAYERS')}
+                        className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium cursor-pointer ${
+                          worldSettingsPermission === 'ALL_PLAYERS'
+                            ? 'bg-[#22392c] border-[#e5a93c]/85 text-[#ffffff]'
+                            : 'bg-[#16261d] hover:bg-[#1e3328] border-[#2c4637] text-[#cddacb]'
+                        }`}
+                      >
+                        {t.mpWorldSettingsAllPlayers}
+                      </button>
+                    </div>
+                  )}
+                  {!canControlWorldSettings && (
+                    <div
+                      data-testid="pause-world-settings-locked-notice"
+                      className="px-2.5 py-1.5 rounded-lg bg-[#231d11] border border-[#e5a93c]/30 text-[11px] text-[#f3c66c]"
+                    >
+                      {t.mpWorldSettingsHostOnlyNotice}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Day & Night Cycle Settings */}
               {timeSnapshot && (
                 <div className="pt-3 border-t border-[#24382d] space-y-2.5">
@@ -363,7 +426,7 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
                     </span>
                   </div>
 
-                  <div>
+                  <div className={isMultiplayer && !canControlWorldSettings ? 'opacity-50' : ''}>
                     <div className="flex items-center justify-between text-xs text-[#cddacb] mb-1">
                       <label htmlFor="day-length-slider">{t.dayLengthLabel}</label>
                       <span className="font-mono-num text-[#f1f5ee]" dir="ltr">
@@ -378,43 +441,48 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
                       min={60}
                       max={1200}
                       step={30}
+                      disabled={isMultiplayer && !canControlWorldSettings}
                       value={dayDurationSec}
                       onChange={(e) =>
                         onSetDayDuration?.(parseInt(e.target.value, 10))
                       }
-                      className="w-full accent-[#e5a93c] cursor-pointer"
+                      className="w-full accent-[#e5a93c] cursor-pointer disabled:cursor-not-allowed"
                     />
                   </div>
 
                   <div className="grid grid-cols-2 gap-1.5">
                     <button
                       type="button"
+                      disabled={isMultiplayer && !canControlWorldSettings}
                       onClick={() => onJumpToTimePreset?.('sunrise')}
-                      className="px-2.5 py-1.5 rounded-lg bg-[#16261d] hover:bg-[#1e3328] border border-[#2c4637] text-xs font-medium flex items-center gap-1.5 cursor-pointer"
+                      className="px-2.5 py-1.5 rounded-lg bg-[#16261d] hover:bg-[#1e3328] disabled:opacity-45 disabled:cursor-not-allowed border border-[#2c4637] text-xs font-medium flex items-center gap-1.5 cursor-pointer"
                     >
                       <Sunrise className="w-3.5 h-3.5 text-[#f29f66] shrink-0" />
                       <span className="truncate">{t.presetSunrise}</span>
                     </button>
                     <button
                       type="button"
+                      disabled={isMultiplayer && !canControlWorldSettings}
                       onClick={() => onJumpToTimePreset?.('noon')}
-                      className="px-2.5 py-1.5 rounded-lg bg-[#16261d] hover:bg-[#1e3328] border border-[#2c4637] text-xs font-medium flex items-center gap-1.5 cursor-pointer"
+                      className="px-2.5 py-1.5 rounded-lg bg-[#16261d] hover:bg-[#1e3328] disabled:opacity-45 disabled:cursor-not-allowed border border-[#2c4637] text-xs font-medium flex items-center gap-1.5 cursor-pointer"
                     >
                       <Sun className="w-3.5 h-3.5 text-[#f2c464] shrink-0" />
                       <span className="truncate">{t.presetNoon}</span>
                     </button>
                     <button
                       type="button"
+                      disabled={isMultiplayer && !canControlWorldSettings}
                       onClick={() => onJumpToTimePreset?.('sunset')}
-                      className="px-2.5 py-1.5 rounded-lg bg-[#16261d] hover:bg-[#1e3328] border border-[#2c4637] text-xs font-medium flex items-center gap-1.5 cursor-pointer"
+                      className="px-2.5 py-1.5 rounded-lg bg-[#16261d] hover:bg-[#1e3328] disabled:opacity-45 disabled:cursor-not-allowed border border-[#2c4637] text-xs font-medium flex items-center gap-1.5 cursor-pointer"
                     >
                       <Sunset className="w-3.5 h-3.5 text-[#eb7844] shrink-0" />
                       <span className="truncate">{t.presetSunset}</span>
                     </button>
                     <button
                       type="button"
+                      disabled={isMultiplayer && !canControlWorldSettings}
                       onClick={() => onJumpToTimePreset?.('midnight')}
-                      className="px-2.5 py-1.5 rounded-lg bg-[#16261d] hover:bg-[#1e3328] border border-[#2c4637] text-xs font-medium flex items-center gap-1.5 cursor-pointer"
+                      className="px-2.5 py-1.5 rounded-lg bg-[#16261d] hover:bg-[#1e3328] disabled:opacity-45 disabled:cursor-not-allowed border border-[#2c4637] text-xs font-medium flex items-center gap-1.5 cursor-pointer"
                     >
                       <Moon className="w-3.5 h-3.5 text-[#92b4ed] shrink-0" />
                       <span className="truncate">{t.presetMidnight}</span>
@@ -430,8 +498,9 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
                     <span>{t.weatherControlsTitle}</span>
                     <button
                       type="button"
+                      disabled={isMultiplayer && !canControlWorldSettings}
                       onClick={() => onSetWeatherDynamic?.(!weatherDynamic)}
-                      className={`px-2 py-0.5 rounded border text-[11px] font-medium cursor-pointer ${
+                      className={`px-2 py-0.5 rounded border text-[11px] font-medium cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed ${
                         weatherDynamic
                           ? 'bg-[#1c3226] border-[#7fe094]/45 text-[#9ee8ae]'
                           : 'bg-[#18281f] border-[#2c4637] text-[#e5a93c]'
@@ -448,8 +517,9 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
                         <button
                           key={state}
                           type="button"
+                          disabled={isMultiplayer && !canControlWorldSettings}
                           onClick={() => onSetWeatherState?.(state)}
-                          className={`px-2 py-1.5 rounded-lg border text-xs font-medium flex items-center gap-1.5 cursor-pointer ${
+                          className={`px-2 py-1.5 rounded-lg border text-xs font-medium flex items-center gap-1.5 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed ${
                             active
                               ? 'bg-[#22392c] border-[#e5a93c]/85 text-[#ffffff]'
                               : 'bg-[#16261d] hover:bg-[#1e3328] border-[#2c4637] text-[#cddacb]'
@@ -464,7 +534,7 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
                     })}
                   </div>
 
-                  <div>
+                  <div className={isMultiplayer && !canControlWorldSettings ? 'opacity-50' : ''}>
                     <div className="flex items-center justify-between text-xs text-[#cddacb] mb-1">
                       <label htmlFor="weather-transition-slider">
                         {t.weatherTransitionLabel}
@@ -480,13 +550,14 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
                       min={2}
                       max={40}
                       step={2}
+                      disabled={isMultiplayer && !canControlWorldSettings}
                       value={weatherTransitionSec}
                       onChange={(e) =>
                         onSetWeatherTransitionDuration?.(
                           parseInt(e.target.value, 10),
                         )
                       }
-                      className="w-full accent-[#e5a93c] cursor-pointer"
+                      className="w-full accent-[#e5a93c] cursor-pointer disabled:cursor-not-allowed"
                     />
                   </div>
 

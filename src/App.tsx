@@ -608,6 +608,9 @@ export default function App() {
         seed: info.seed,
         worldType: authType,
         difficulty: authDifficulty,
+        worldSettingsPermission: info.worldSettingsPermission,
+        worldTime: info.worldTime,
+        worldWeather: info.worldWeather,
         localPlayerId: info.localPlayerId,
         players: info.players,
       });
@@ -1353,6 +1356,19 @@ export default function App() {
             onSetWeatherQuality={(quality) =>
               engineRef.current?.setWeatherQuality(quality)
             }
+            isMultiplayer={engineRef.current?.isMultiplayerSession() ?? false}
+            isHost={engineRef.current?.isMultiplayerHost() ?? false}
+            worldSettingsPermission={
+              engineRef.current?.getWorldSettingsPermission() ??
+              activeMpRoom?.worldSettingsPermission ??
+              'HOST_ONLY'
+            }
+            canControlWorldSettings={
+              engineRef.current?.canControlWorldSettings() ?? true
+            }
+            onSetWorldSettingsPermission={(perm) =>
+              engineRef.current?.setWorldSettingsPermission(perm)
+            }
           />
         )}
 
@@ -1515,7 +1531,9 @@ export default function App() {
                             ? t.mpErrorRoomFull
                             : (err as { code?: string }).code === 'GAME_ALREADY_STARTED'
                               ? t.mpErrorGameAlreadyStarted
-                              : t.mpErrorRoomNotFound
+                              : (err as { code?: string }).code === 'ROOM_EXPIRED'
+                                ? t.mpErrorRoomExpired
+                                : t.mpErrorRoomNotFound
                           : t.mpErrorRoomNotFound;
                       showNotice(msg);
                     } finally {

@@ -270,6 +270,8 @@ export const MultiplayerScreen: React.FC<MultiplayerScreenProps> = ({
         switch (err.code) {
           case 'ROOM_NOT_FOUND':
             return t.mpErrorRoomNotFound;
+          case 'ROOM_EXPIRED':
+            return t.mpErrorRoomExpired;
           case 'ROOM_FULL':
             return t.mpErrorRoomFull;
           case 'GAME_ALREADY_STARTED':

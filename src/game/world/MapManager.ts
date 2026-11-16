@@ -34,7 +34,9 @@ export type MapMarkerKind =
   | 'herb'
   | 'resource'
   | 'region'
-  | 'waypoint';
+  | 'waypoint'
+  | 'friend'
+  | 'room_player';
 
 export type MapMarkerCategory =
   | 'village'
@@ -42,12 +44,22 @@ export type MapMarkerCategory =
   | 'location'
   | 'herb'
   | 'resource'
-  | 'waypoint';
+  | 'waypoint'
+  | 'players';
 
 export interface MapWaypoint {
   x: number;
   z: number;
   label?: string;
+}
+
+export interface MapPlayerPin {
+  id: string;
+  name: string;
+  relationship: 'friend' | 'room_player';
+  x: number;
+  z: number;
+  isDead?: boolean;
 }
 
 export interface MapAnimalEntry {
@@ -110,6 +122,7 @@ export interface MapWorldData {
   landmarks: WorldLandmark[];
   npcs: MapNpcEntry[];
   animals?: MapAnimalEntry[];
+  players?: MapPlayerPin[];
   interactables: MapInteractableEntry[];
   activeQuests: QuestView[];
   availableQuests: QuestView[];
@@ -139,6 +152,7 @@ export interface MiniMapRenderParams {
   markers: MapMarker[];
   npcs: MapNpcEntry[];
   animals?: MapAnimalEntry[];
+  players?: MapPlayerPin[];
   villages?: MapVillageEntry[];
   waypoint?: MapWaypoint | null;
   rotateWithPlayer: boolean;
@@ -1066,6 +1080,25 @@ export class MapManager {
       });
     }
 
+    // 6. Active room Friends & Room Players (strictly from synced active room state)
+    if (input.players && input.players.length > 0) {
+      for (const p of input.players) {
+        markers.push({
+          id: `player-${p.id}`,
+          kind: p.relationship === 'friend' ? 'friend' : 'room_player',
+          category: 'players',
+          label: p.name,
+          subtitle:
+            p.relationship === 'friend'
+              ? t.mapLegendFriend
+              : t.mapLegendRoomPlayer,
+          x: p.x,
+          z: p.z,
+          discovered: true,
+        });
+      }
+    }
+
     return markers;
   }
 
@@ -1099,7 +1132,7 @@ export class MapManager {
           ? 24
           : m.kind === 'village' || m.kind === 'waypoint'
             ? 18
-            : m.kind.startsWith('quest')
+            : m.kind.startsWith('quest') || m.kind === 'friend' || m.kind === 'room_player'
               ? 16
               : 13;
       const dx = sx - pos.sx;
@@ -1248,6 +1281,15 @@ export class MapManager {
           pos.sx,
           pos.sy,
           m.label,
+          isHighlighted,
+          params.elapsedSec,
+        );
+      } else if (m.kind === 'friend' || m.kind === 'room_player') {
+        this.drawPlayerPinMarker(
+          ctx,
+          pos.sx,
+          pos.sy,
+          m,
           isHighlighted,
           params.elapsedSec,
         );
@@ -1414,6 +1456,45 @@ export class MapManager {
       ctx.arc(rx, rz, 2.2, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+    }
+
+    // Active room Friends & Room Players on Mini-Map
+    if (params.players && params.players.length > 0) {
+      const clampEdgeR = halfPx - 7;
+      for (let i = 0; i < params.players.length; i++) {
+        const pl = params.players[i];
+        const rx = (pl.x - params.playerX) * ppm;
+        const rz = (pl.z - params.playerZ) * ppm;
+        const distPx = Math.hypot(rx, rz);
+        const isFriend = pl.relationship === 'friend';
+        const fillColor = isFriend ? '#4ade80' : '#38bdf8';
+
+        if (distPx <= halfPx * 0.94) {
+          if (isFriend) {
+            ctx.strokeStyle = 'rgba(74, 222, 128, 0.55)';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.arc(rx, rz, 5.2, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+          ctx.fillStyle = fillColor;
+          ctx.strokeStyle = '#09140e';
+          ctx.lineWidth = 1.3;
+          ctx.beginPath();
+          ctx.arc(rx, rz, isFriend ? 3.8 : 3.2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        } else if (isFriend) {
+          const ang = Math.atan2(rz, rx);
+          this.drawMiniEdgeArrow(
+            ctx,
+            Math.cos(ang) * clampEdgeR,
+            Math.sin(ang) * clampEdgeR,
+            ang,
+            fillColor,
+          );
+        }
+      }
     }
 
     // Nearby markers (villages, discovered locations, quests, waypoint)
@@ -1904,6 +1985,56 @@ export class MapManager {
     ctx.restore();
   }
 
+  private drawPlayerPinMarker(
+    ctx: CanvasRenderingContext2D,
+    sx: number,
+    sy: number,
+    marker: MapMarker,
+    highlighted: boolean,
+    elapsedSec: number,
+  ): void {
+    const isFriend = marker.kind === 'friend';
+    const fill = isFriend ? '#4ade80' : '#38bdf8';
+    const labelColor = isFriend ? '#bbf7d0' : '#bae6fd';
+
+    ctx.save();
+    ctx.translate(sx, sy);
+
+    if (isFriend) {
+      const pulseR = 11 + Math.sin(elapsedSec * 3.1) * 1.8;
+      ctx.strokeStyle = 'rgba(74, 222, 128, 0.52)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(0, 0, pulseR, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    const r = highlighted ? 8.5 : isFriend ? 6.8 : 5.8;
+    ctx.fillStyle = fill;
+    ctx.strokeStyle = '#09140e';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(0, 0, 1.9, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (highlighted) {
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    this.drawPinLabel(ctx, 0, r + 11, marker.label, highlighted, labelColor);
+    ctx.restore();
+  }
+
   private drawPlayerMarker(
     ctx: CanvasRenderingContext2D,
     sx: number,
@@ -2035,6 +2166,8 @@ function sortMarkersForDraw(markers: MapMarker[]): MapMarker[] {
     quest_active: 8,
     quest_turnin: 9,
     waypoint: 10,
+    room_player: 11,
+    friend: 12,
   };
   return [...markers].sort((a, b) => rank[a.kind] - rank[b.kind]);
 }

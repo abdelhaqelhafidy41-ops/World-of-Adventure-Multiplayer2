@@ -807,6 +807,18 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               />
 
               <ToggleRow
+                label={t.showFriendsOnMapLabel}
+                checked={draftExtended.gameplay.showFriendsOnMap}
+                testId="toggle-show-friends-on-map"
+                onChange={(v) =>
+                  setDraftExtended((ext) => ({
+                    ...ext,
+                    gameplay: { ...ext.gameplay, showFriendsOnMap: v },
+                  }))
+                }
+              />
+
+              <ToggleRow
                 label={`${t.miniMapOrientationLabel} (${
                   draftExtended.gameplay.miniMapRotate
                     ? t.miniMapRotating

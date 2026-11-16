@@ -7,9 +7,11 @@ import {
   HEARTBEAT_TIMEOUT_MS,
   HOST_DISCONNECT_GRACE_MS,
   MAX_PLAYERS_PER_ROOM,
+  MAX_WEATHER_DURATION_MS,
   MIN_PLAYERS_PER_ROOM,
   MULTIPLAYER_PROTOCOL_VERSION,
   PLAYER_RECONNECT_GRACE_MS,
+  ROOM_INACTIVE_TIMEOUT_MS,
   SERVER_ANIMAL_MAX_HP,
   SERVER_CRAFTABLE_YIELDS,
   SERVER_ENEMY_MAX_HP,
@@ -23,8 +25,11 @@ import {
   sanitizeDisplayName,
   sanitizeRoomName,
   type AuthoritativePlayerVitals,
+  type AuthoritativeProgressionState,
   type AuthoritativeRoomSnapshot,
   type AuthoritativeWorldSettings,
+  type AuthoritativeWorldTimeState,
+  type AuthoritativeWorldWeatherState,
   type ChatHistoryPayload,
   type DifficultyLevel,
   type NetworkEnvelope,
@@ -40,6 +45,9 @@ import {
   type RoomWorldSnapshotPayload,
   type ServerMessageType,
   type SyncedEntityKind,
+  type WorldSettingsPermission,
+  type WorldTimePreset,
+  type WorldWeatherState,
   type WorldType,
 } from '../../../shared/multiplayerProtocol';
 import type { AvatarConfig, ProfileStatsDelta } from '../../../shared/profileTypes';
@@ -84,6 +92,10 @@ interface AuthoritativePlayerRecord {
   lastBedUsedAtMs: number;
   lastResourceCollectAtMs: number;
   chestWeaponLootCount: number;
+  coins: number;
+  xp: number;
+  level: number;
+  lastEnemyAttackAtBySource: Record<string, number>;
 }
 
 interface ServerTrackedEntity {
@@ -119,6 +131,14 @@ interface ServerTrackedArrow {
   consumed: boolean;
 }
 
+interface RoomQuestEntry {
+  questId: string;
+  status: string;
+  stepIndex: number;
+  updatedBy: string;
+  updatedAtMs: number;
+}
+
 interface RoomWorldSyncState {
   entities: Record<string, ServerTrackedEntity>;
   openedChests: Record<string, { openedBy: string; openedAtMs: number }>;
@@ -145,16 +165,8 @@ interface RoomWorldSyncState {
       droppedBy: string;
     }
   >;
-  quests: Record<
-    string,
-    {
-      questId: string;
-      status: string;
-      stepIndex: number;
-      updatedBy: string;
-      updatedAtMs: number;
-    }
-  >;
+  quests?: Record<string, RoomQuestEntry>;
+  questsByPlayer?: Record<string, Record<string, RoomQuestEntry>>;
   discoveredLandmarks: string[];
   worldHours?: number;
   weather?: string;
@@ -186,6 +198,12 @@ interface StoredRoomRecord {
   passwordHash: string | null;
   playerTokens: Record<string, string>;
   createdAt: number;
+  lastActivityAt?: number;
+  lastPlayerJoinedAt?: number | null;
+  lastPlayerLeftAt?: number | null;
+  expiresAt?: number;
+  worldTime?: AuthoritativeWorldTimeState;
+  worldWeather?: AuthoritativeWorldWeatherState;
 }
 
 interface ActiveSocketSession {
@@ -210,6 +228,23 @@ const MAX_PLAYER_SPEED_MPS = 18;
 const MAX_MOVEMENT_JITTER_M = 6;
 const MAX_CONNECTIONS_PER_IP_PER_ROOM = 8;
 const BED_HEAL_COOLDOWN_MS = 8_000;
+const STARTING_COINS_BY_WORLD_TYPE: Record<WorldType, number> = {
+  creative: 500,
+  adventure: 50,
+  normal: 0,
+  survival: 0,
+};
+const TIME_PRESET_HOURS: Record<WorldTimePreset, number> = {
+  sunrise: 6.2,
+  noon: 12.0,
+  sunset: 18.2,
+  midnight: 0.0,
+};
+const ENEMY_REWARDS: Record<string, { xp: number; coins: number }> = {
+  bandit_scout: { xp: 25, coins: 12 },
+  thorn_stalker: { xp: 18, coins: 8 },
+  stone_sentinel: { xp: 55, coins: 30 },
+};
 const VALID_QUEST_STATUSES = new Set<string>([
   'locked',
   'available',
@@ -285,10 +320,19 @@ export class MultiplayerRoomDO {
           }
         }
       }
+      if (!this.room.lastActivityAt) {
+        this.room.lastActivityAt = this.room.createdAt || this.bootAt;
+        modified = true;
+      }
+      if (!this.room.expiresAt) {
+        this.room.expiresAt = this.room.lastActivityAt + ROOM_INACTIVE_TIMEOUT_MS;
+        modified = true;
+      }
       if (modified) {
         await this.persist();
       }
-      if (Object.keys(this.room.players).length > 0) {
+      const expired = await this.expireIfNeeded(this.bootAt);
+      if (!expired && this.room.status !== 'closed') {
         await this.scheduleLifecycleSweep();
       }
     }
@@ -315,11 +359,140 @@ export class MultiplayerRoomDO {
         doors: {},
         placedBeds: {},
         droppedItems: {},
-        quests: {},
+        questsByPlayer: {},
         discoveredLandmarks: [],
       };
     }
+    if (!this.room!.worldSync.questsByPlayer) {
+      this.room!.worldSync.questsByPlayer = {};
+    }
     return this.room!.worldSync;
+  }
+
+  private getDefaultStartingCoins(): number {
+    const wt = this.room?.gameState.worldType ?? 'normal';
+    return STARTING_COINS_BY_WORLD_TYPE[wt] ?? 0;
+  }
+
+  private touchRoomActivity(nowMs: number): void {
+    if (!this.room || this.room.status === 'closed') return;
+    this.room.lastActivityAt = nowMs;
+    this.room.expiresAt = nowMs + ROOM_INACTIVE_TIMEOUT_MS;
+  }
+
+  private ensureWorldTime(nowMs: number): AuthoritativeWorldTimeState {
+    const ws = this.ensureWorldSync();
+    if (!this.room!.worldTime) {
+      this.room!.worldTime = {
+        worldHours: typeof ws.worldHours === 'number' ? ws.worldHours : 8.2,
+        dayCount: 1,
+        timeScale: 1,
+        paused: false,
+        fullDayDurationSeconds: 720,
+        anchorServerMs: nowMs,
+      };
+    }
+    return this.room!.worldTime;
+  }
+
+  private materializeWorldTime(nowMs: number): AuthoritativeWorldTimeState {
+    const wt = this.ensureWorldTime(nowMs);
+    if (!wt.paused && nowMs > wt.anchorServerMs) {
+      const elapsedSec = (nowMs - wt.anchorServerMs) / 1000;
+      const hoursPerSec = 24 / Math.max(60, wt.fullDayDurationSeconds);
+      const totalHours = wt.worldHours + elapsedSec * hoursPerSec * wt.timeScale;
+      const dayAdvance = Math.floor(totalHours / 24);
+      if (dayAdvance > 0) {
+        wt.dayCount += dayAdvance;
+      }
+      wt.worldHours = Math.round((((totalHours % 24) + 24) % 24) * 1000) / 1000;
+      wt.anchorServerMs = nowMs;
+    } else if (nowMs > wt.anchorServerMs) {
+      wt.anchorServerMs = nowMs;
+    }
+    const ws = this.ensureWorldSync();
+    ws.worldHours = wt.worldHours;
+    return { ...wt };
+  }
+
+  private ensureWorldWeather(nowMs: number): AuthoritativeWorldWeatherState {
+    const ws = this.ensureWorldSync();
+    if (!this.room!.worldWeather) {
+      const fallbackWeather: WorldWeatherState =
+        ws.weather === 'cloudy' ||
+        ws.weather === 'overcast' ||
+        ws.weather === 'rain' ||
+        ws.weather === 'storm' ||
+        ws.weather === 'fog'
+          ? ws.weather
+          : 'clear';
+      this.room!.worldWeather = {
+        currentState: fallbackWeather,
+        targetState: fallbackWeather,
+        intensity: fallbackWeather === 'clear' ? 0 : 0.6,
+        dynamicEnabled: true,
+        transitionDurationSeconds: 12,
+        startMs: nowMs,
+        durationMs: 240_000,
+        endMs: nowMs + 240_000,
+      };
+    }
+    return this.room!.worldWeather;
+  }
+
+  private materializeWorldWeather(nowMs: number): AuthoritativeWorldWeatherState {
+    const ww = this.ensureWorldWeather(nowMs);
+    ww.durationMs = Math.max(5_000, Math.min(MAX_WEATHER_DURATION_MS, ww.durationMs));
+    ww.endMs = ww.startMs + ww.durationMs;
+    if (nowMs >= ww.endMs && ww.currentState !== ww.targetState) {
+      ww.currentState = ww.targetState;
+    }
+    const ws = this.ensureWorldSync();
+    ws.weather = ww.currentState;
+    return { ...ww };
+  }
+
+  private async expireIfNeeded(nowMs: number): Promise<boolean> {
+    if (!this.room) return false;
+    if (this.room.status === 'closed') return true;
+    const expiresAt =
+      this.room.expiresAt ??
+      (this.room.lastActivityAt ?? this.room.createdAt) + ROOM_INACTIVE_TIMEOUT_MS;
+    if (nowMs < expiresAt) return false;
+
+    const departedPlayers = Object.values(this.room.players);
+    this.broadcast('ROOM_CLOSED', 'system', {
+      reason: 'Room expired after 72 hours of inactivity.',
+      closedBy: 'system',
+    });
+
+    this.room.players = {};
+    this.room.playerTokens = {};
+    this.room.hostId = '';
+    this.room.status = 'closed';
+    this.room.gameState.locked = true;
+    this.room.lastActivityAt = nowMs;
+    this.room.expiresAt = expiresAt;
+    await this.syncDirectory();
+    for (const p of departedPlayers) {
+      await this.syncProfileEvent(p.publicProfileId, {
+        currentRoomId: null,
+        currentRoomName: null,
+      });
+    }
+    for (const [sock, sess] of Array.from(this.sessions.entries())) {
+      sess.cleanDisconnect = true;
+      this.sessions.delete(sock);
+      try {
+        sock.close(4010, 'Room expired');
+      } catch {
+        // Ignore close errors
+      }
+    }
+    await this.persist();
+    this.clearSweepTimer();
+    await this.ctx.storage.deleteAlarm?.();
+    return true;
   }
 
   private resolveEntityMaxHp(kind: SyncedEntityKind, archetype: string): number {
@@ -336,6 +509,8 @@ export class MultiplayerRoomDO {
     const ws = this.ensureWorldSync();
     const auth = this.ensureAuthoritativePlayer(playerId);
     const now = Date.now();
+    const worldTime = this.materializeWorldTime(now);
+    const worldWeather = this.materializeWorldWeather(now);
     const depletedResources: RoomWorldSnapshotPayload['depletedResources'] = [];
     for (const [id, rec] of Object.entries(ws.depletedResources)) {
       if (now >= rec.regenAtMs) {
@@ -351,6 +526,7 @@ export class MultiplayerRoomDO {
     const deadEntities = Object.values(ws.entities)
       .filter((e) => e.isDead)
       .map((e) => ({ id: e.id, kind: e.kind }));
+    const playerQuests = ws.questsByPlayer?.[playerId] ?? {};
 
     return {
       openedChests: Object.keys(ws.openedChests),
@@ -359,7 +535,7 @@ export class MultiplayerRoomDO {
       doors: Object.entries(ws.doors).map(([id, isOpen]) => ({ id, isOpen })),
       placedBeds: Object.values(ws.placedBeds),
       droppedItems: Object.values(ws.droppedItems),
-      quests: Object.values(ws.quests).map((q) => ({
+      quests: Object.values(playerQuests).map((q) => ({
         questId: q.questId,
         status: q.status,
         stepIndex: q.stepIndex,
@@ -367,9 +543,18 @@ export class MultiplayerRoomDO {
       })),
       discoveredLandmarks: ws.discoveredLandmarks.slice(),
       deadEntities,
-      worldHours: ws.worldHours,
-      weather: ws.weather,
+      worldHours: worldTime.worldHours,
+      weather: worldWeather.currentState,
+      worldTime,
+      worldWeather,
+      worldSettingsPermission:
+        this.room!.gameState.worldSettingsPermission ?? 'HOST_ONLY',
+      serverTimestamp: now,
       ammoCount: auth.ammoCount,
+      coins: auth.coins,
+      xp: auth.xp,
+      level: auth.level,
+      xpToNextLevel: auth.level * 100,
     };
   }
 
@@ -412,6 +597,10 @@ export class MultiplayerRoomDO {
         lastBedUsedAtMs: 0,
         lastResourceCollectAtMs: 0,
         chestWeaponLootCount: 0,
+        coins: this.getDefaultStartingCoins(),
+        xp: 0,
+        level: 1,
+        lastEnemyAttackAtBySource: {},
       };
       this.room!.authoritativePlayers[playerId] = auth;
     } else {
@@ -461,12 +650,72 @@ export class MultiplayerRoomDO {
       if (typeof auth.chestWeaponLootCount !== 'number') {
         auth.chestWeaponLootCount = 0;
       }
+      if (typeof auth.coins !== 'number' || !Number.isFinite(auth.coins)) {
+        auth.coins = this.getDefaultStartingCoins();
+      }
+      if (typeof auth.xp !== 'number' || !Number.isFinite(auth.xp)) {
+        auth.xp = 0;
+      }
+      if (typeof auth.level !== 'number' || !Number.isFinite(auth.level) || auth.level < 1) {
+        auth.level = 1;
+      }
+      if (!auth.lastEnemyAttackAtBySource || typeof auth.lastEnemyAttackAtBySource !== 'object') {
+        auth.lastEnemyAttackAtBySource = {};
+      }
     }
     return auth;
   }
 
+  private sendToPlayer<T>(
+    playerId: string,
+    type: ServerMessageType,
+    payload?: T,
+  ): void {
+    for (const [sock, sess] of this.sessions) {
+      if (sess.playerId === playerId) {
+        this.sendToSocket(sock, type, playerId, payload);
+      }
+    }
+  }
+
+  private grantProgression(
+    playerId: string,
+    deltaXp: number,
+    deltaCoins: number,
+    reason: string,
+  ): AuthoritativeProgressionState {
+    const auth = this.ensureAuthoritativePlayer(playerId);
+    if (deltaCoins !== 0) {
+      auth.coins = Math.max(0, Math.round(auth.coins + deltaCoins));
+    }
+    if (deltaXp > 0) {
+      auth.xp += Math.round(deltaXp);
+      while (auth.xp >= auth.level * 100) {
+        auth.xp -= auth.level * 100;
+        auth.level += 1;
+      }
+    }
+    const payload: AuthoritativeProgressionState = {
+      playerId,
+      coins: auth.coins,
+      xp: auth.xp,
+      level: auth.level,
+      xpToNextLevel: auth.level * 100,
+      reason,
+    };
+    this.sendToPlayer<AuthoritativeProgressionState>(
+      playerId,
+      'PROGRESSION_UPDATED',
+      payload,
+    );
+    return payload;
+  }
+
   private buildSnapshot(): AuthoritativeRoomSnapshot | null {
     if (!this.room) return null;
+    const now = Date.now();
+    const worldTime = this.materializeWorldTime(now);
+    const worldWeather = this.materializeWorldWeather(now);
     const playerList = Object.values(this.room.players)
       .map((p) => {
         const auth = this.room?.authoritativePlayers?.[p.playerId];
@@ -490,12 +739,25 @@ export class MultiplayerRoomDO {
       roomCode: this.room.roomCode,
       roomName: this.room.roomName,
       hostId: this.room.hostId,
-      hostName: hostPlayer?.displayName ?? 'Host',
+      hostName: hostPlayer?.displayName ?? (playerList.length === 0 ? 'Open Room' : 'Host'),
       players: playerList,
       maxPlayers: this.room.maxPlayers,
       status: this.room.status,
-      gameState: this.room.gameState,
+      gameState: {
+        ...this.room.gameState,
+        worldSettingsPermission:
+          this.room.gameState.worldSettingsPermission ?? 'HOST_ONLY',
+      },
       createdAt: this.room.createdAt,
+      lastActivityAt: this.room.lastActivityAt ?? this.room.createdAt,
+      lastPlayerJoinedAt: this.room.lastPlayerJoinedAt ?? null,
+      lastPlayerLeftAt: this.room.lastPlayerLeftAt ?? null,
+      expiresAt:
+        this.room.expiresAt ??
+        (this.room.lastActivityAt ?? this.room.createdAt) + ROOM_INACTIVE_TIMEOUT_MS,
+      worldTime,
+      worldWeather,
+      serverTimestamp: now,
     };
   }
 
@@ -504,7 +766,7 @@ export class MultiplayerRoomDO {
       const dirId = this.env.ROOM_DIRECTORY.idFromName('global');
       const stub = this.env.ROOM_DIRECTORY.get(dirId);
 
-      if (!this.room || Object.keys(this.room.players).length === 0) {
+      if (!this.room || this.room.status === 'closed') {
         if (this.room?.roomId) {
           await stub.fetch('https://directory.internal/remove', {
             method: 'POST',
@@ -540,6 +802,8 @@ export class MultiplayerRoomDO {
           hasPassword: snap.gameState.hasPassword,
           createdAt: snap.createdAt,
           updatedAt: Date.now(),
+          lastActivityAt: snap.lastActivityAt,
+          expiresAt: snap.expiresAt,
         }),
       });
     } catch {
@@ -630,7 +894,7 @@ export class MultiplayerRoomDO {
   }
 
   private async handleCreateRoom(request: Request): Promise<Response> {
-    if (this.room && Object.keys(this.room.players).length > 0) {
+    if (this.room && this.room.status !== 'closed') {
       return Response.json(
         { ok: false, error: 'ROOM_ALREADY_EXISTS' },
         { status: 409 },
@@ -775,6 +1039,10 @@ export class MultiplayerRoomDO {
           lastBedUsedAtMs: 0,
           lastResourceCollectAtMs: 0,
           chestWeaponLootCount: 0,
+          coins: STARTING_COINS_BY_WORLD_TYPE[worldType] ?? 0,
+          xp: 0,
+          level: 1,
+          lastEnemyAttackAtBySource: {},
         },
       },
       maxPlayers,
@@ -788,6 +1056,7 @@ export class MultiplayerRoomDO {
         isPrivate,
         allowFriends,
         requireAllReady,
+        worldSettingsPermission: 'HOST_ONLY',
         worldSettings,
         locked: false,
         hasPassword: Boolean(passwordHash),
@@ -797,10 +1066,33 @@ export class MultiplayerRoomDO {
       passwordHash,
       playerTokens: { [hostId]: sessionToken },
       createdAt: now,
+      lastActivityAt: now,
+      lastPlayerJoinedAt: now,
+      lastPlayerLeftAt: null,
+      expiresAt: now + ROOM_INACTIVE_TIMEOUT_MS,
+      worldTime: {
+        worldHours: 8.2,
+        dayCount: 1,
+        timeScale: 1,
+        paused: false,
+        fullDayDurationSeconds: 720,
+        anchorServerMs: now,
+      },
+      worldWeather: {
+        currentState: 'clear',
+        targetState: 'clear',
+        intensity: 0,
+        dynamicEnabled: true,
+        transitionDurationSeconds: 12,
+        startMs: now,
+        durationMs: 240_000,
+        endMs: now + 240_000,
+      },
     };
 
     await this.persist();
     await this.syncDirectory();
+    await this.scheduleLifecycleSweep();
     await this.syncProfileEvent(hostPlayer.publicProfileId, {
       currentRoomId: this.room.roomId,
       currentRoomName: this.room.roomName,
@@ -820,6 +1112,12 @@ export class MultiplayerRoomDO {
       return Response.json(
         { ok: false, error: 'ROOM_NOT_FOUND', message: 'ROOM NOT FOUND' },
         { status: 404 },
+      );
+    }
+    if (await this.expireIfNeeded(Date.now())) {
+      return Response.json(
+        { ok: false, error: 'ROOM_EXPIRED', message: 'ROOM EXPIRED' },
+        { status: 410 },
       );
     }
 
@@ -888,6 +1186,10 @@ export class MultiplayerRoomDO {
     const now = Date.now();
 
     const playerEntityId = generateNetworkEntityId(playerId);
+    const shouldBecomeHost =
+      !this.room.hostId ||
+      Object.keys(this.room.players).length === 0 ||
+      !this.room.players[this.room.hostId];
     const joinedPlayer: NetworkPlayerRecord = {
       playerId,
       ...(verifiedIdentity?.publicProfileId
@@ -900,8 +1202,8 @@ export class MultiplayerRoomDO {
         : {}),
       avatarColor: verifiedIdentity?.avatar?.color ?? pickAvatarColor(playerId),
       ...(verifiedIdentity?.avatar ? { avatar: verifiedIdentity.avatar } : {}),
-      isHost: false,
-      isReady: false,
+      isHost: shouldBecomeHost,
+      isReady: shouldBecomeHost,
       pingMs: null,
       connectionQuality: 'good',
       joinedAt: now,
@@ -910,6 +1212,9 @@ export class MultiplayerRoomDO {
       maxHealth: 100,
       isDead: false,
     };
+    if (shouldBecomeHost) {
+      this.room.hostId = playerId;
+    }
     this.room.players[playerId] = joinedPlayer;
     if (!this.room.authoritativePlayers) {
       this.room.authoritativePlayers = {};
@@ -944,11 +1249,18 @@ export class MultiplayerRoomDO {
       lastBedUsedAtMs: 0,
       lastResourceCollectAtMs: 0,
       chestWeaponLootCount: 0,
+      coins: this.getDefaultStartingCoins(),
+      xp: 0,
+      level: 1,
+      lastEnemyAttackAtBySource: {},
     };
     this.room.playerTokens[playerId] = sessionToken;
+    this.room.lastPlayerJoinedAt = now;
+    this.touchRoomActivity(now);
 
     await this.persist();
     await this.syncDirectory();
+    await this.scheduleLifecycleSweep();
     await this.syncProfileEvent(joinedPlayer.publicProfileId, {
       currentRoomId: this.room.roomId,
       currentRoomName: this.room.roomName,
@@ -968,6 +1280,7 @@ export class MultiplayerRoomDO {
   private async handleLeavePlayer(playerId: string): Promise<void> {
     if (!this.room || !this.room.players[playerId]) return;
 
+    const now = Date.now();
     const leavingPlayer = this.room.players[playerId];
     const leavingName = leavingPlayer.displayName;
     const wasHost = this.room.hostId === playerId;
@@ -993,9 +1306,14 @@ export class MultiplayerRoomDO {
 
     if (remaining.length === 0) {
       this.broadcast('LEAVE_ROOM', playerId, { displayName: leavingName });
-      await this.syncDirectory();
-      this.room = null;
+      this.room.hostId = '';
+      this.room.status = 'waiting';
+      this.room.gameState.locked = false;
+      this.room.lastPlayerLeftAt = now;
+      this.touchRoomActivity(now);
       await this.persist();
+      await this.syncDirectory();
+      await this.scheduleLifecycleSweep();
       return;
     }
 
@@ -1175,7 +1493,7 @@ export class MultiplayerRoomDO {
 
   private async scheduleLifecycleSweep(): Promise<void> {
     this.clearSweepTimer();
-    if (!this.room) return;
+    if (!this.room || this.room.status === 'closed') return;
 
     const now = Date.now();
     const hostGraceMs = this.getHostDisconnectGraceMs();
@@ -1184,7 +1502,9 @@ export class MultiplayerRoomDO {
       Array.from(this.sessions.values()).map((s) => s.playerId),
     );
 
-    let earliestDeadline: number | null = null;
+    let earliestDeadline: number | null =
+      this.room.expiresAt ??
+      (this.room.lastActivityAt ?? this.room.createdAt) + ROOM_INACTIVE_TIMEOUT_MS;
 
     // Check host transfer deadline if host is disconnected & another player is connected
     const hostPlayer = this.room.players[this.room.hostId];
@@ -1220,12 +1540,15 @@ export class MultiplayerRoomDO {
     if (typeof this.ctx.storage.setAlarm === 'function') {
       await this.ctx.storage.setAlarm(targetTime);
     }
-    const delayMs = Math.max(25, Math.min(60_000, targetTime - now));
-    this.sweepTimer = setTimeout(() => {
-      this.sweepTimer = null;
-      void this.sweepLifecycle();
-    }, delayMs);
-    (this.sweepTimer as { unref?: () => void }).unref?.();
+    const deltaMs = targetTime - now;
+    if (deltaMs <= 120_000) {
+      const delayMs = Math.max(25, deltaMs);
+      this.sweepTimer = setTimeout(() => {
+        this.sweepTimer = null;
+        void this.sweepLifecycle();
+      }, delayMs);
+      (this.sweepTimer as { unref?: () => void }).unref?.();
+    }
   }
 
   public async alarm(): Promise<void> {
@@ -1234,8 +1557,11 @@ export class MultiplayerRoomDO {
   }
 
   public async sweepLifecycle(): Promise<void> {
-    if (!this.room) return;
+    if (!this.room || this.room.status === 'closed') return;
     const now = Date.now();
+    if (await this.expireIfNeeded(now)) {
+      return;
+    }
     const hostGraceMs = this.getHostDisconnectGraceMs();
     const reconnectGraceMs = this.getPlayerReconnectGraceMs();
 
@@ -1294,7 +1620,7 @@ export class MultiplayerRoomDO {
     }
     for (const expiredId of expiredIds) {
       await this.handleLeavePlayer(expiredId);
-      if (!this.room) return;
+      if (!this.room || this.room.status === 'closed') return;
     }
 
     await this.scheduleLifecycleSweep();
@@ -1542,6 +1868,10 @@ export class MultiplayerRoomDO {
         this.room.gameState.locked = true;
         this.room.gameState.startedAt = now;
         this.room.gameState.tick += 1;
+        this.touchRoomActivity(now);
+        const startWorldTime = this.ensureWorldTime(now);
+        startWorldTime.anchorServerMs = now;
+        this.ensureWorldWeather(now);
         await this.persist();
         await this.syncDirectory();
         this.broadcastRoomState();
@@ -1554,6 +1884,8 @@ export class MultiplayerRoomDO {
           worldType: this.room.gameState.worldType,
           difficulty: this.room.gameState.difficulty,
           requireAllReady: this.room.gameState.requireAllReady,
+          worldSettingsPermission:
+            this.room.gameState.worldSettingsPermission ?? 'HOST_ONLY',
           worldSettings: this.room.gameState.worldSettings ?? {
             worldType: this.room.gameState.worldType,
             difficulty: this.room.gameState.difficulty,
@@ -1573,7 +1905,294 @@ export class MultiplayerRoomDO {
             sess.playerId,
             this.buildWorldSnapshot(sess.playerId),
           );
+          const pAuth = this.ensureAuthoritativePlayer(sess.playerId);
+          this.sendToSocket<AuthoritativeProgressionState>(
+            sock,
+            'PROGRESSION_UPDATED',
+            sess.playerId,
+            {
+              playerId: sess.playerId,
+              coins: pAuth.coins,
+              xp: pAuth.xp,
+              level: pAuth.level,
+              xpToNextLevel: pAuth.level * 100,
+              reason: 'start_game',
+            },
+          );
         }
+        break;
+      }
+
+      case 'WORLD_SETTINGS_UPDATE': {
+        if (!msg.worldSettingsUpdate) return;
+        const upd = msg.worldSettingsUpdate;
+        const isHost = this.room.hostId === session.playerId;
+
+        if (upd.worldSettingsPermission !== undefined) {
+          if (!isHost) {
+            this.sendToSocket(session.ws, 'ERROR', session.playerId, {
+              code: 'FORBIDDEN_HOST_ONLY',
+              message: 'Only the room host can change world settings permissions.',
+            });
+            return;
+          }
+          this.room.gameState.worldSettingsPermission = upd.worldSettingsPermission;
+        }
+
+        const hasWorldControlFields =
+          upd.preset !== undefined ||
+          upd.worldHours !== undefined ||
+          upd.dayCount !== undefined ||
+          upd.timeScale !== undefined ||
+          upd.paused !== undefined ||
+          upd.fullDayDurationSeconds !== undefined ||
+          upd.weatherState !== undefined ||
+          upd.targetWeatherState !== undefined ||
+          upd.weatherIntensity !== undefined ||
+          upd.dynamicEnabled !== undefined ||
+          upd.transitionDurationSeconds !== undefined ||
+          upd.durationMs !== undefined ||
+          upd.triggerLightning !== undefined;
+
+        const currentPermission: WorldSettingsPermission =
+          this.room.gameState.worldSettingsPermission ?? 'HOST_ONLY';
+        if (hasWorldControlFields && !isHost && currentPermission !== 'ALL_PLAYERS') {
+          this.sendToSocket(session.ws, 'ERROR', session.playerId, {
+            code: 'FORBIDDEN_WORLD_SETTINGS',
+            message: 'Host currently restricts world time and weather controls.',
+          });
+          return;
+        }
+
+        this.touchRoomActivity(now);
+        const materializedTime = this.materializeWorldTime(now);
+        const wt = this.ensureWorldTime(now);
+        const prevDay = wt.dayCount;
+        const prevScale = wt.timeScale;
+        let timeChanged = false;
+
+        if (upd.preset !== undefined) {
+          wt.worldHours = TIME_PRESET_HOURS[upd.preset];
+          wt.anchorServerMs = now;
+          timeChanged = true;
+        }
+        if (upd.worldHours !== undefined) {
+          wt.worldHours = Math.round(upd.worldHours * 1000) / 1000;
+          wt.anchorServerMs = now;
+          timeChanged = true;
+        }
+        if (upd.dayCount !== undefined) {
+          wt.dayCount = upd.dayCount;
+          wt.anchorServerMs = now;
+          timeChanged = true;
+        }
+        if (upd.timeScale !== undefined) {
+          wt.timeScale = upd.timeScale;
+          wt.anchorServerMs = now;
+          timeChanged = true;
+        }
+        if (upd.paused !== undefined) {
+          wt.paused = upd.paused;
+          wt.anchorServerMs = now;
+          timeChanged = true;
+        }
+        if (upd.fullDayDurationSeconds !== undefined) {
+          wt.fullDayDurationSeconds = upd.fullDayDurationSeconds;
+          wt.anchorServerMs = now;
+          timeChanged = true;
+        }
+        const wsSync = this.ensureWorldSync();
+        wsSync.worldHours = wt.worldHours;
+
+        const ww = this.materializeWorldWeather(now);
+        const wwRef = this.ensureWorldWeather(now);
+        let weatherChanged = false;
+        let intensityChanged = false;
+
+        if (
+          upd.weatherState !== undefined ||
+          upd.targetWeatherState !== undefined ||
+          upd.dynamicEnabled !== undefined ||
+          upd.durationMs !== undefined ||
+          upd.transitionDurationSeconds !== undefined
+        ) {
+          const nextState = upd.targetWeatherState ?? upd.weatherState ?? wwRef.currentState;
+          if (upd.weatherState !== undefined && upd.targetWeatherState === undefined) {
+            wwRef.currentState = upd.weatherState;
+          }
+          wwRef.targetState = nextState;
+          if (upd.dynamicEnabled !== undefined) {
+            wwRef.dynamicEnabled = upd.dynamicEnabled;
+          }
+          if (upd.transitionDurationSeconds !== undefined) {
+            wwRef.transitionDurationSeconds = upd.transitionDurationSeconds;
+          }
+          if (upd.weatherState !== undefined || upd.targetWeatherState !== undefined || upd.durationMs !== undefined) {
+            wwRef.startMs = now;
+            wwRef.durationMs = Math.max(
+              5_000,
+              Math.min(MAX_WEATHER_DURATION_MS, upd.durationMs ?? wwRef.durationMs ?? 240_000),
+            );
+            wwRef.endMs = wwRef.startMs + wwRef.durationMs;
+          }
+          if (upd.weatherIntensity === undefined && upd.weatherState !== undefined) {
+            const defaultIntensity =
+              upd.weatherState === 'storm'
+                ? 0.9
+                : upd.weatherState === 'rain'
+                  ? 0.72
+                  : upd.weatherState === 'fog' || upd.weatherState === 'overcast'
+                    ? 0.6
+                    : upd.weatherState === 'cloudy'
+                      ? 0.35
+                      : 0;
+            wwRef.intensity = defaultIntensity;
+          }
+          wsSync.weather = wwRef.currentState;
+          weatherChanged = true;
+        }
+        if (upd.weatherIntensity !== undefined) {
+          wwRef.intensity = upd.weatherIntensity;
+          intensityChanged = true;
+        }
+
+        await this.persist();
+
+        const finalTime = { ...wt };
+        const finalWeather = { ...wwRef };
+        if (timeChanged && (wt.worldHours !== materializedTime.worldHours || wt.paused !== materializedTime.paused || upd.preset !== undefined || upd.worldHours !== undefined || upd.fullDayDurationSeconds !== undefined)) {
+          this.broadcast('WORLD_TIME_CHANGED', session.playerId, {
+            worldTime: finalTime,
+            serverTimestamp: now,
+            updatedBy: session.playerId,
+          });
+        }
+        if (wt.dayCount !== prevDay) {
+          this.broadcast('WORLD_DAY_CHANGED', session.playerId, {
+            dayCount: wt.dayCount,
+            worldHours: wt.worldHours,
+            serverTimestamp: now,
+            updatedBy: session.playerId,
+          });
+        }
+        if (wt.timeScale !== prevScale) {
+          this.broadcast('WORLD_TIME_SCALE_CHANGED', session.playerId, {
+            timeScale: wt.timeScale,
+            paused: wt.paused,
+            worldTime: finalTime,
+            serverTimestamp: now,
+            updatedBy: session.playerId,
+          });
+        }
+        if (weatherChanged || upd.triggerLightning) {
+          this.broadcast('WORLD_WEATHER_CHANGED', session.playerId, {
+            worldWeather: finalWeather,
+            triggerLightning: Boolean(upd.triggerLightning),
+            serverTimestamp: now,
+            updatedBy: session.playerId,
+          });
+        }
+        if (intensityChanged || (upd.weatherState !== undefined && ww.intensity !== finalWeather.intensity)) {
+          this.broadcast('WORLD_WEATHER_INTENSITY_CHANGED', session.playerId, {
+            intensity: finalWeather.intensity,
+            worldWeather: finalWeather,
+            serverTimestamp: now,
+            updatedBy: session.playerId,
+          });
+        }
+        this.broadcast('WORLD_SETTINGS_UPDATED', session.playerId, {
+          worldSettingsPermission: this.room.gameState.worldSettingsPermission ?? 'HOST_ONLY',
+          worldTime: finalTime,
+          worldWeather: finalWeather,
+          triggerLightning: Boolean(upd.triggerLightning),
+          serverTimestamp: now,
+          updatedBy: session.playerId,
+        });
+        if (upd.worldSettingsPermission !== undefined) {
+          this.broadcastRoomState();
+        }
+        break;
+      }
+
+      case 'ENEMY_ATTACK_PLAYER': {
+        if (!msg.enemyAttackPlayer) return;
+        if (this.room.status !== 'in-game') return;
+        if (this.room.hostId !== session.playerId) {
+          this.sendToSocket(session.ws, 'ERROR', session.playerId, {
+            code: 'FORBIDDEN_HOST_ONLY',
+            message: 'Only the room host can submit NPC/enemy attacks.',
+          });
+          return;
+        }
+        if (this.room.gameState.worldType === 'creative') return;
+        const { targetPlayerId, sourceId, damage, x, z } = msg.enemyAttackPlayer;
+        const targetPlayer = this.room.players[targetPlayerId];
+        const targetAuth = this.room.authoritativePlayers?.[targetPlayerId];
+        if (!targetPlayer || !targetAuth || targetAuth.isDead) return;
+
+        const lastSrcHit = targetAuth.lastEnemyAttackAtBySource[sourceId] ?? 0;
+        if (now - lastSrcHit < 650) return;
+
+        if (x !== undefined && z !== undefined) {
+          if (Math.hypot(x - targetAuth.lastX, z - targetAuth.lastZ) > 9.5) {
+            return;
+          }
+        }
+
+        targetAuth.lastEnemyAttackAtBySource[sourceId] = now;
+        targetAuth.health = Math.max(0, targetAuth.health - damage);
+        targetAuth.lastDamageAtMs = now;
+        if (targetAuth.health <= 0) {
+          targetAuth.isDead = true;
+          targetAuth.reviveAtMs = now + 2000;
+        }
+        targetPlayer.health = targetAuth.health;
+        targetPlayer.maxHealth = targetAuth.maxHealth;
+        targetPlayer.isDead = targetAuth.isDead;
+        if (targetPlayer.state) {
+          targetPlayer.state.health = targetAuth.health;
+          targetPlayer.state.isDead = targetAuth.isDead;
+        }
+        this.touchRoomActivity(now);
+        this.broadcast<AuthoritativePlayerVitals>('PLAYER_VITALS', targetPlayerId, {
+          playerId: targetPlayerId,
+          networkEntityId: targetAuth.networkEntityId,
+          health: targetAuth.health,
+          maxHealth: targetAuth.maxHealth,
+          isDead: targetAuth.isDead,
+          reviveAtMs: targetAuth.reviveAtMs,
+        });
+        if (targetAuth.isDead) {
+          this.broadcast('GAME_EVENT', session.playerId, {
+            event: 'PLAYER_DIED',
+            data: {
+              playerId: targetPlayerId,
+              killerId: sourceId,
+              displayName: targetPlayer.displayName,
+              x: targetAuth.lastX,
+              y: targetAuth.lastY,
+              z: targetAuth.lastZ,
+            },
+          });
+        }
+        break;
+      }
+
+      case 'REPAIR_WEAPONS': {
+        if (!msg.repairWeapons) return;
+        if (this.room.status !== 'in-game') return;
+        const auth = this.ensureAuthoritativePlayer(session.playerId);
+        const cost = this.room.gameState.worldType === 'creative' ? 0 : msg.repairWeapons.costCoins;
+        if (auth.coins < cost) {
+          this.sendToSocket(session.ws, 'ERROR', session.playerId, {
+            code: 'INSUFFICIENT_COINS',
+            message: 'Not enough coins to repair weapons.',
+          });
+          return;
+        }
+        this.touchRoomActivity(now);
+        this.grantProgression(session.playerId, 0, -cost, 'weapons_repaired');
+        await this.persist();
         break;
       }
 
@@ -1676,6 +2295,7 @@ export class MultiplayerRoomDO {
         if (this.room.chatMessages.length > CHAT_HISTORY_LIMIT) {
           this.room.chatMessages = this.room.chatMessages.slice(-CHAT_HISTORY_LIMIT);
         }
+        this.touchRoomActivity(now);
         await this.persist();
         this.broadcast<RoomChatMessage>('ROOM_CHAT', session.playerId, chatEntry);
         break;
@@ -1816,6 +2436,7 @@ export class MultiplayerRoomDO {
         player.isDead = auth.isDead;
         player.state = relayedState;
         this.room.gameState.tick += 1;
+        this.touchRoomActivity(now);
         if (now - this.lastStatePersistAt >= 3000) {
           this.lastStatePersistAt = now;
           await this.persist();
@@ -1841,12 +2462,7 @@ export class MultiplayerRoomDO {
         }
 
         const ws = this.ensureWorldSync();
-        if (typeof msg.entitySync.worldHours === 'number') {
-          ws.worldHours = msg.entitySync.worldHours;
-        }
-        if (typeof msg.entitySync.weather === 'string') {
-          ws.weather = msg.entitySync.weather;
-        }
+        this.touchRoomActivity(now);
 
         const relayedEntities = [];
         for (const delta of msg.entitySync.entities) {
@@ -1905,17 +2521,15 @@ export class MultiplayerRoomDO {
           });
         }
 
+        const worldTime = this.materializeWorldTime(now);
+        const worldWeather = this.materializeWorldWeather(now);
         this.broadcast(
           'ENTITY_SYNC',
           session.playerId,
           {
             entities: relayedEntities,
-            ...(msg.entitySync.worldHours !== undefined
-              ? { worldHours: msg.entitySync.worldHours }
-              : {}),
-            ...(msg.entitySync.weather !== undefined
-              ? { weather: msg.entitySync.weather }
-              : {}),
+            worldHours: worldTime.worldHours,
+            weather: worldWeather.currentState,
           },
           session.ws,
         );
@@ -2528,6 +3142,7 @@ export class MultiplayerRoomDO {
             }
           }
           await this.persist();
+          this.grantProgression(session.playerId, 15, 12, 'chest_opened');
           this.broadcast('GAME_EVENT', session.playerId, {
             event: 'CHEST_OPENED',
             data: {
@@ -2594,6 +3209,7 @@ export class MultiplayerRoomDO {
             auth.ammoCount = Math.min(240, auth.ammoCount + count);
           }
           await this.persist();
+          this.grantProgression(session.playerId, 5, 0, 'resource_collected');
           await this.syncProfileEvent(player.publicProfileId, {
             statsDelta: { resourcesCollected: 1, xpGained: 5 },
           });
@@ -2850,9 +3466,18 @@ export class MultiplayerRoomDO {
           if (Math.hypot(bx - auth.lastX, bz - auth.lastZ) > 8.5) return;
           const ws = this.ensureWorldSync();
           auth.lastBedUsedAtMs = now;
+          const wtBefore = this.materializeWorldTime(now);
+          const wtRef = this.ensureWorldTime(now);
+          const prevBedDay = wtRef.dayCount;
+          if (wtBefore.worldHours > 6.5) {
+            wtRef.dayCount += 1;
+          }
+          wtRef.worldHours = 6.5;
+          wtRef.anchorServerMs = now;
           ws.worldHours = 6.5;
           auth.health = auth.maxHealth;
           player.health = auth.health;
+          this.touchRoomActivity(now);
           await this.persist();
           this.broadcast<AuthoritativePlayerVitals>('PLAYER_VITALS', session.playerId, {
             playerId: session.playerId,
@@ -2862,6 +3487,19 @@ export class MultiplayerRoomDO {
             isDead: false,
             reviveAtMs: null,
           });
+          this.broadcast('WORLD_TIME_CHANGED', session.playerId, {
+            worldTime: { ...wtRef },
+            serverTimestamp: now,
+            updatedBy: session.playerId,
+          });
+          if (wtRef.dayCount !== prevBedDay) {
+            this.broadcast('WORLD_DAY_CHANGED', session.playerId, {
+              dayCount: wtRef.dayCount,
+              worldHours: wtRef.worldHours,
+              serverTimestamp: now,
+              updatedBy: session.playerId,
+            });
+          }
           this.broadcast('GAME_EVENT', session.playerId, {
             event: 'BED_USED',
             data: {
@@ -2889,21 +3527,26 @@ export class MultiplayerRoomDO {
               ? Math.max(0, Math.min(50, Math.round(eventData.stepIndex)))
               : 0;
           const ws = this.ensureWorldSync();
-          const prevQuest = ws.quests[questId];
-          ws.quests[questId] = {
+          const questsByPlayer = ws.questsByPlayer!;
+          if (!questsByPlayer[session.playerId]) {
+            questsByPlayer[session.playerId] = {};
+          }
+          const playerQuests = questsByPlayer[session.playerId];
+          const prevQuest = playerQuests[questId];
+          playerQuests[questId] = {
             questId,
             status,
             stepIndex,
             updatedBy: session.playerId,
             updatedAtMs: now,
           };
+          this.touchRoomActivity(now);
           await this.persist();
           if (status === 'completed' && prevQuest?.status !== 'completed') {
-            for (const roomPlayer of Object.values(this.room.players)) {
-              await this.syncProfileEvent(roomPlayer.publicProfileId, {
-                statsDelta: { questsCompleted: 1, xpGained: 45 },
-              });
-            }
+            this.grantProgression(session.playerId, 45, 30, 'quest_completed');
+            await this.syncProfileEvent(player.publicProfileId, {
+              statsDelta: { questsCompleted: 1, xpGained: 45 },
+            });
           }
           this.broadcast('GAME_EVENT', session.playerId, {
             event: 'QUEST_UPDATED',
@@ -2931,10 +3574,17 @@ export class MultiplayerRoomDO {
               await this.persist();
             }
           } else if (kind === 'weather_changed' && typeof eventData.weather === 'string') {
-            if (this.room.hostId !== session.playerId) {
+            const perm = this.room.gameState.worldSettingsPermission ?? 'HOST_ONLY';
+            if (this.room.hostId !== session.playerId && perm !== 'ALL_PLAYERS') {
               return;
             }
-            ws.weather = eventData.weather.slice(0, 24);
+            const nextW = eventData.weather.slice(0, 24) as WorldWeatherState;
+            const wwRef = this.ensureWorldWeather(now);
+            wwRef.currentState = nextW;
+            wwRef.targetState = nextW;
+            wwRef.startMs = now;
+            wwRef.endMs = now + wwRef.durationMs;
+            ws.weather = nextW;
           } else if (kind === 'item_crafted' && typeof eventData.recipeId === 'string') {
             const lastCraft = this.lastAmmoCraftAtByPlayer.get(session.playerId) ?? 0;
             if (now - lastCraft < 500) {
@@ -3145,10 +3795,13 @@ export class MultiplayerRoomDO {
     if (killed) {
       const attackerPlayer = this.room.players[attackerId];
       if (targetKind === 'enemy') {
+        const reward = ENEMY_REWARDS[entity.archetype] ?? { xp: 25, coins: 12 };
+        this.grantProgression(attackerId, reward.xp, reward.coins, 'enemy_killed');
         await this.syncProfileEvent(attackerPlayer?.publicProfileId, {
-          statsDelta: { enemiesDefeated: 1, xpGained: 25 },
+          statsDelta: { enemiesDefeated: 1, xpGained: reward.xp },
         });
       } else if (targetKind === 'animal') {
+        this.grantProgression(attackerId, 12, 0, 'animal_hunted');
         await this.syncProfileEvent(attackerPlayer?.publicProfileId, {
           statsDelta: { animalsDefeated: 1, xpGained: 12 },
         });
@@ -3171,6 +3824,12 @@ export class MultiplayerRoomDO {
   private async handleWebSocketUpgrade(request: Request): Promise<Response> {
     if (!this.room) {
       return Response.json({ ok: false, error: 'ROOM_NOT_FOUND' }, { status: 404 });
+    }
+    if (await this.expireIfNeeded(Date.now())) {
+      return Response.json(
+        { ok: false, error: 'ROOM_EXPIRED', message: 'ROOM EXPIRED' },
+        { status: 410 },
+      );
     }
 
     const url = new URL(request.url);
@@ -3319,6 +3978,19 @@ export class MultiplayerRoomDO {
         playerId,
         this.buildWorldSnapshot(playerId),
       );
+      this.sendToSocket<AuthoritativeProgressionState>(
+        serverSocket,
+        'PROGRESSION_UPDATED',
+        playerId,
+        {
+          playerId,
+          coins: auth.coins,
+          xp: auth.xp,
+          level: auth.level,
+          xpToNextLevel: auth.level * 100,
+          reason: 'reconnect',
+        },
+      );
     }
 
     if (wasDisconnected) {
@@ -3348,11 +4020,31 @@ export class MultiplayerRoomDO {
       return this.handleIssueJoinTicket(request);
     }
 
+    if (request.method === 'POST' && url.pathname === '/expire-sweep') {
+      const body = (await request.json().catch(() => null)) as { nowMs?: unknown } | null;
+      const nowMs =
+        typeof body?.nowMs === 'number' && Number.isFinite(body.nowMs)
+          ? body.nowMs
+          : Date.now();
+      const expired = await this.expireIfNeeded(nowMs);
+      return Response.json({
+        ok: true,
+        expired,
+        status: this.room?.status ?? 'missing',
+      });
+    }
+
     if (request.method === 'POST' && url.pathname === '/verify-member') {
       if (!this.room) {
         return Response.json(
           { ok: false, error: 'ROOM_NOT_FOUND', message: 'ROOM NOT FOUND' },
           { status: 404 },
+        );
+      }
+      if (await this.expireIfNeeded(Date.now())) {
+        return Response.json(
+          { ok: false, error: 'ROOM_EXPIRED', message: 'ROOM EXPIRED' },
+          { status: 410 },
         );
       }
       const body = (await request.json().catch(() => null)) as {
@@ -3386,6 +4078,12 @@ export class MultiplayerRoomDO {
           { status: 404 },
         );
       }
+      if (await this.expireIfNeeded(Date.now())) {
+        return Response.json(
+          { ok: false, error: 'ROOM_EXPIRED', message: 'ROOM EXPIRED' },
+          { status: 410 },
+        );
+      }
       if (this.room.gameState.locked || this.room.status !== 'waiting') {
         return Response.json(
           {
@@ -3416,6 +4114,12 @@ export class MultiplayerRoomDO {
         return Response.json(
           { ok: false, error: 'ROOM_NOT_FOUND', message: 'ROOM NOT FOUND' },
           { status: 404 },
+        );
+      }
+      if (await this.expireIfNeeded(Date.now())) {
+        return Response.json(
+          { ok: false, error: 'ROOM_EXPIRED', message: 'ROOM EXPIRED' },
+          { status: 410 },
         );
       }
       return Response.json({ ok: true, room: this.buildSnapshot() });

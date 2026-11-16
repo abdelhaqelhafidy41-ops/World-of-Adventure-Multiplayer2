@@ -435,6 +435,51 @@ export default {
       return withCors(dirRes, cors);
     }
 
+    // Deterministic room expiration sweep helper (uses 72h ROOM_INACTIVE_TIMEOUT_MS against optional nowMs)
+    if (request.method === 'POST' && url.pathname === '/api/multiplayer/rooms/expire-sweep') {
+      const parsed = await parseBoundedJson(request);
+      if (!parsed.ok) {
+        return withCors(
+          Response.json({ ok: false, error: parsed.error }, { status: parsed.status }),
+          cors,
+        );
+      }
+      const nowMs =
+        typeof parsed.data.nowMs === 'number' && Number.isFinite(parsed.data.nowMs)
+          ? parsed.data.nowMs
+          : Date.now();
+      const targetRoomId =
+        typeof parsed.data.roomId === 'string' && isValidRoomId(parsed.data.roomId)
+          ? parsed.data.roomId
+          : null;
+      let roomSweep: Record<string, unknown> | null = null;
+      if (targetRoomId) {
+        const roomStub = env.MULTIPLAYER_ROOMS.get(
+          env.MULTIPLAYER_ROOMS.idFromName(targetRoomId),
+        );
+        const rRes = await roomStub.fetch('https://room.internal/expire-sweep', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ nowMs }),
+        });
+        roomSweep = (await rRes.json().catch(() => null)) as Record<string, unknown> | null;
+      }
+      const dirSweepRes = await directoryStub.fetch('https://directory.internal/expire-sweep', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ nowMs }),
+      });
+      const dirSweep = (await dirSweepRes.json().catch(() => null)) as Record<string, unknown> | null;
+      return withCors(
+        Response.json({
+          ok: true,
+          ...(roomSweep ? { room: roomSweep } : {}),
+          directory: dirSweep,
+        }),
+        cors,
+      );
+    }
+
     // Verify a room exists, is not full, and is not locked before joining
     if (request.method === 'GET' && url.pathname === '/api/multiplayer/rooms/verify') {
       const rawCodeOrId = (url.searchParams.get('codeOrId') ?? '').trim();

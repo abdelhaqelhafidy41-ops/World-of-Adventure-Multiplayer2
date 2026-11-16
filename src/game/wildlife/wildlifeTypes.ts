@@ -122,11 +122,19 @@ export interface NearbyAnimalEntry {
   isDead: boolean;
 }
 
+export interface RemoteWildlifePlayerTarget {
+  playerId: string;
+  position: THREE.Vector3;
+  isAlive: boolean;
+}
+
 export interface WildlifeTickContext {
   dt: number;
   elapsed: number;
   worldHours: number;
   playerPos: THREE.Vector3;
+  localPlayerId?: string;
+  remoteTargets?: RemoteWildlifePlayerTarget[];
   isNearPlayer: boolean;
   queryCollidersNear: (x: number, z: number) => WorldCollider[];
   queryNearbyAnimals: (
@@ -137,4 +145,10 @@ export interface WildlifeTickContext {
   ) => NearbyAnimalEntry[];
   isVillageClearance: (x: number, z: number) => boolean;
   onPredatorHitPlayer?: (animalId: string, species: AnimalSpecies, damage: number) => void;
+  onPredatorHitRemotePlayer?: (
+    animalId: string,
+    species: AnimalSpecies,
+    damage: number,
+    targetPlayerId: string,
+  ) => void;
 }

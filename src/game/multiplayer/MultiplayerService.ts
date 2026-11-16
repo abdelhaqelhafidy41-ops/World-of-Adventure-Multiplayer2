@@ -19,11 +19,15 @@ import {
   validatePlayerReportPayload,
   validatePlayerStatePayload,
   type AuthoritativePlayerVitals,
+  type AuthoritativeProgressionState,
   type AuthoritativeRoomSnapshot,
   type AuthoritativeWorldSettings,
+  type AuthoritativeWorldTimeState,
+  type AuthoritativeWorldWeatherState,
   type ChatHistoryPayload,
   type ClientMessageType,
   type ConnectionQuality,
+  type EnemyAttackPlayerPayload,
   type EntitySyncBatchPayload,
   type ErrorPayload,
   type GameEventPayload,
@@ -38,6 +42,8 @@ import {
   type RoomChatMessage,
   type RoomClosedPayload,
   type RoomWorldSnapshotPayload,
+  type WorldSettingsPermission,
+  type WorldSettingsUpdatePayload,
 } from '../../../shared/multiplayerProtocol';
 import {
   MultiplayerJoinError,
@@ -123,6 +129,8 @@ function mapJoinErrorCode(rawError?: string): MultiplayerJoinErrorCode {
     case 'INVALID_ROOM_CODE_OR_ID':
     case 'INVALID_ROOM_ID':
       return 'ROOM_NOT_FOUND';
+    case 'ROOM_EXPIRED':
+      return 'ROOM_EXPIRED';
     case 'ROOM_FULL':
       return 'ROOM_FULL';
     case 'GAME_ALREADY_STARTED':
@@ -204,6 +212,7 @@ function toRoomState(
     isPrivate: Boolean(snap.gameState.isPrivate),
     allowFriends: snap.gameState.allowFriends !== false,
     requireAllReady: snap.gameState.requireAllReady !== false,
+    worldSettingsPermission: snap.gameState.worldSettingsPermission ?? 'HOST_ONLY',
     worldSettings:
       snap.gameState.worldSettings ??
       defaultWorldSettings(snap.gameState.worldType, snap.gameState.difficulty),
@@ -212,6 +221,11 @@ function toRoomState(
     hasPassword: snap.gameState.hasPassword,
     seed: snap.gameState.seed,
     createdAt: snap.createdAt,
+    ...(snap.lastActivityAt !== undefined ? { lastActivityAt: snap.lastActivityAt } : {}),
+    ...(snap.expiresAt !== undefined ? { expiresAt: snap.expiresAt } : {}),
+    ...(snap.worldTime ? { worldTime: snap.worldTime } : {}),
+    ...(snap.worldWeather ? { worldWeather: snap.worldWeather } : {}),
+    ...(snap.serverTimestamp !== undefined ? { serverTimestamp: snap.serverTimestamp } : {}),
     players: snap.players.map((p) => ({
       id: p.playerId,
       ...(p.publicProfileId ? { publicProfileId: p.publicProfileId } : {}),
@@ -471,13 +485,16 @@ export class MultiplayerService implements IMultiplayerService {
         if (closeEvent.code === 4002) {
           return;
         }
-        if (closeEvent.code === 4000) {
+        if (closeEvent.code === 4000 || closeEvent.code === 4010) {
           this.intentionalDisconnect = true;
           if (this.currentRoom) {
             this.disconnect();
             this.emit({
               type: 'room-closed',
-              reason: closeEvent.reason || 'Room no longer exists.',
+              reason:
+                closeEvent.code === 4010
+                  ? 'Room expired after 72 hours of inactivity.'
+                  : closeEvent.reason || 'Room no longer exists.',
             });
           } else {
             this.setConnectionState('disconnected');
@@ -882,6 +899,21 @@ export class MultiplayerService implements IMultiplayerService {
       return false;
     }
     return this.sendMessage<EntitySyncBatchPayload>('ENTITY_SYNC', check.payload);
+  }
+
+  public sendWorldSettingsUpdate(payload: WorldSettingsUpdatePayload): boolean {
+    return this.sendMessage<WorldSettingsUpdatePayload>('WORLD_SETTINGS_UPDATE', payload);
+  }
+
+  public sendEnemyAttackPlayer(payload: EnemyAttackPlayerPayload): boolean {
+    return this.sendMessage<EnemyAttackPlayerPayload>('ENEMY_ATTACK_PLAYER', payload);
+  }
+
+  public sendRepairWeapons(costCoins: number): boolean {
+    if (!Number.isFinite(costCoins) || costCoins <= 0) return false;
+    return this.sendMessage('REPAIR_WEAPONS', {
+      costCoins: Math.max(1, Math.min(500, Math.round(costCoins))),
+    });
   }
 
   public sendGameEvent(
@@ -1375,6 +1407,176 @@ export class MultiplayerService implements IMultiplayerService {
         }
         break;
       }
+      case 'PROGRESSION_UPDATED': {
+        const progression = envelope.payload as AuthoritativeProgressionState | undefined;
+        if (progression && typeof progression.playerId === 'string') {
+          this.emit({ type: 'progression-updated', progression });
+        }
+        break;
+      }
+      case 'WORLD_TIME_CHANGED': {
+        const payload = envelope.payload as
+          | {
+              worldTime?: AuthoritativeWorldTimeState;
+              serverTimestamp?: number;
+              updatedBy?: string;
+            }
+          | undefined;
+        if (payload?.worldTime) {
+          if (this.currentRoom) {
+            this.currentRoom = {
+              ...this.currentRoom,
+              worldTime: payload.worldTime,
+              serverTimestamp: payload.serverTimestamp ?? Date.now(),
+            };
+          }
+          this.emit({
+            type: 'world-time-changed',
+            worldTime: payload.worldTime,
+            serverTimestamp: payload.serverTimestamp ?? Date.now(),
+            updatedBy: payload.updatedBy,
+          });
+        }
+        break;
+      }
+      case 'WORLD_DAY_CHANGED': {
+        const payload = envelope.payload as
+          | {
+              dayCount?: number;
+              worldHours?: number;
+              serverTimestamp?: number;
+              updatedBy?: string;
+            }
+          | undefined;
+        if (typeof payload?.dayCount === 'number' && typeof payload?.worldHours === 'number') {
+          this.emit({
+            type: 'world-day-changed',
+            dayCount: payload.dayCount,
+            worldHours: payload.worldHours,
+            serverTimestamp: payload.serverTimestamp ?? Date.now(),
+            updatedBy: payload.updatedBy,
+          });
+        }
+        break;
+      }
+      case 'WORLD_TIME_SCALE_CHANGED': {
+        const payload = envelope.payload as
+          | {
+              timeScale?: number;
+              paused?: boolean;
+              worldTime?: AuthoritativeWorldTimeState;
+              serverTimestamp?: number;
+              updatedBy?: string;
+            }
+          | undefined;
+        if (payload?.worldTime && typeof payload.timeScale === 'number') {
+          if (this.currentRoom) {
+            this.currentRoom = {
+              ...this.currentRoom,
+              worldTime: payload.worldTime,
+              serverTimestamp: payload.serverTimestamp ?? Date.now(),
+            };
+          }
+          this.emit({
+            type: 'world-time-scale-changed',
+            timeScale: payload.timeScale,
+            paused: Boolean(payload.paused),
+            worldTime: payload.worldTime,
+            serverTimestamp: payload.serverTimestamp ?? Date.now(),
+            updatedBy: payload.updatedBy,
+          });
+        }
+        break;
+      }
+      case 'WORLD_WEATHER_CHANGED': {
+        const payload = envelope.payload as
+          | {
+              worldWeather?: AuthoritativeWorldWeatherState;
+              triggerLightning?: boolean;
+              serverTimestamp?: number;
+              updatedBy?: string;
+            }
+          | undefined;
+        if (payload?.worldWeather) {
+          if (this.currentRoom) {
+            this.currentRoom = {
+              ...this.currentRoom,
+              worldWeather: payload.worldWeather,
+              serverTimestamp: payload.serverTimestamp ?? Date.now(),
+            };
+          }
+          this.emit({
+            type: 'world-weather-changed',
+            worldWeather: payload.worldWeather,
+            triggerLightning: payload.triggerLightning,
+            serverTimestamp: payload.serverTimestamp ?? Date.now(),
+            updatedBy: payload.updatedBy,
+          });
+        }
+        break;
+      }
+      case 'WORLD_WEATHER_INTENSITY_CHANGED': {
+        const payload = envelope.payload as
+          | {
+              intensity?: number;
+              worldWeather?: AuthoritativeWorldWeatherState;
+              serverTimestamp?: number;
+              updatedBy?: string;
+            }
+          | undefined;
+        if (payload?.worldWeather && typeof payload.intensity === 'number') {
+          if (this.currentRoom) {
+            this.currentRoom = {
+              ...this.currentRoom,
+              worldWeather: payload.worldWeather,
+              serverTimestamp: payload.serverTimestamp ?? Date.now(),
+            };
+          }
+          this.emit({
+            type: 'world-weather-intensity-changed',
+            intensity: payload.intensity,
+            worldWeather: payload.worldWeather,
+            serverTimestamp: payload.serverTimestamp ?? Date.now(),
+            updatedBy: payload.updatedBy,
+          });
+        }
+        break;
+      }
+      case 'WORLD_SETTINGS_UPDATED': {
+        const payload = envelope.payload as
+          | {
+              worldSettingsPermission?: WorldSettingsPermission;
+              worldTime?: AuthoritativeWorldTimeState;
+              worldWeather?: AuthoritativeWorldWeatherState;
+              triggerLightning?: boolean;
+              serverTimestamp?: number;
+              updatedBy?: string;
+            }
+          | undefined;
+        if (payload?.worldTime && payload?.worldWeather) {
+          const perm = payload.worldSettingsPermission ?? 'HOST_ONLY';
+          if (this.currentRoom) {
+            this.currentRoom = {
+              ...this.currentRoom,
+              worldSettingsPermission: perm,
+              worldTime: payload.worldTime,
+              worldWeather: payload.worldWeather,
+              serverTimestamp: payload.serverTimestamp ?? Date.now(),
+            };
+            this.emit({ type: 'room-updated', room: this.currentRoom });
+          }
+          this.emit({
+            type: 'world-settings-updated',
+            worldSettingsPermission: perm,
+            worldTime: payload.worldTime,
+            worldWeather: payload.worldWeather,
+            triggerLightning: payload.triggerLightning,
+            serverTimestamp: payload.serverTimestamp ?? Date.now(),
+            updatedBy: payload.updatedBy,
+          });
+        }
+        break;
+      }
       case 'POSITION_CORRECTION': {
         const correction = envelope.payload as PositionCorrectionPayload | undefined;
         if (
@@ -1412,6 +1614,19 @@ export class MultiplayerService implements IMultiplayerService {
       case 'WORLD_SNAPSHOT': {
         const snap = envelope.payload as RoomWorldSnapshotPayload | undefined;
         if (snap && typeof snap === 'object') {
+          if (this.currentRoom) {
+            this.currentRoom = {
+              ...this.currentRoom,
+              ...(snap.worldSettingsPermission
+                ? { worldSettingsPermission: snap.worldSettingsPermission }
+                : {}),
+              ...(snap.worldTime ? { worldTime: snap.worldTime } : {}),
+              ...(snap.worldWeather ? { worldWeather: snap.worldWeather } : {}),
+              ...(snap.serverTimestamp !== undefined
+                ? { serverTimestamp: snap.serverTimestamp }
+                : {}),
+            };
+          }
           this.emit({
             type: 'world-snapshot',
             snapshot: snap,
@@ -1429,6 +1644,7 @@ export class MultiplayerService implements IMultiplayerService {
               seed?: number;
               worldType?: MultiplayerRoomState['worldType'];
               difficulty?: MultiplayerRoomState['difficulty'];
+              worldSettingsPermission?: WorldSettingsPermission;
               worldSettings?: AuthoritativeWorldSettings;
               requireAllReady?: boolean;
             }
@@ -1446,6 +1662,8 @@ export class MultiplayerService implements IMultiplayerService {
           'normal';
         const seed =
           typeof payload?.seed === 'number' ? payload.seed : (room?.seed ?? 0);
+        const worldSettingsPermission =
+          payload?.worldSettingsPermission ?? room?.worldSettingsPermission ?? 'HOST_ONLY';
         const worldSettings =
           payload?.worldSettings ??
           room?.worldSettings ??
@@ -1463,6 +1681,7 @@ export class MultiplayerService implements IMultiplayerService {
             seed,
             worldType,
             difficulty,
+            worldSettingsPermission,
             worldSettings,
             requireAllReady,
           };
@@ -1478,7 +1697,10 @@ export class MultiplayerService implements IMultiplayerService {
           seed,
           worldType,
           difficulty,
+          worldSettingsPermission,
           worldSettings,
+          worldTime: room?.worldTime,
+          worldWeather: room?.worldWeather,
           requireAllReady,
           isHost: Boolean(room && this.localPlayerId && room.hostId === this.localPlayerId),
           localPlayerId: this.localPlayerId ?? '',
@@ -1715,7 +1937,7 @@ export class MultiplayerService implements IMultiplayerService {
           headers: { accept: 'application/json' },
         },
       );
-      if (res.status === 404) {
+      if (res.status === 404 || res.status === 410) {
         return 'gone';
       }
       if (!res.ok) {

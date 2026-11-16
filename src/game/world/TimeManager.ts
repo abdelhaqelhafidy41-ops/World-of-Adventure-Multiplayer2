@@ -1,6 +1,7 @@
 import type { NpcRoutinePeriod } from '../types';
 import type { Language } from '../i18n/translations';
 import type { SavedTimeState } from '../save/saveTypes';
+import type { AuthoritativeWorldTimeState } from '../../../shared/multiplayerProtocol';
 
 export type DayPhase =
   | 'night'
@@ -251,5 +252,34 @@ export class TimeManager {
     this.setFullDayDurationSeconds(state.fullDayDurationSeconds);
     this.setTimeScale(state.timeScale);
     this.paused = Boolean(state.paused);
+  }
+
+  public syncFromServer(
+    state: AuthoritativeWorldTimeState,
+    serverTimestamp?: number,
+  ): void {
+    this.dayCount = Math.max(1, Math.floor(state.dayCount));
+    this.setFullDayDurationSeconds(state.fullDayDurationSeconds);
+    this.setTimeScale(state.timeScale);
+    this.paused = Boolean(state.paused);
+
+    let nextHours = state.worldHours;
+    if (!this.paused && this.timeScale > 0 && this.fullDayDurationSeconds > 0) {
+      const refMs = Math.max(state.anchorServerMs || 0, serverTimestamp || 0);
+      if (refMs > 0) {
+        // Account for minor transport latency relative to server timestamp if available
+        const baseNow = serverTimestamp ?? Date.now();
+        const elapsedSec = Math.max(0, Math.min(30, (baseNow - state.anchorServerMs) / 1000));
+        if (elapsedSec > 0 && serverTimestamp && state.anchorServerMs < serverTimestamp) {
+          const hoursPerSec = 24 / this.fullDayDurationSeconds;
+          const total = nextHours + elapsedSec * hoursPerSec * this.timeScale;
+          if (total >= 24) {
+            this.dayCount += Math.floor(total / 24);
+          }
+          nextHours = total;
+        }
+      }
+    }
+    this.worldHours = normalizeHours(nextHours);
   }
 }

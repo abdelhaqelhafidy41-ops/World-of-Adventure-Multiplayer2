@@ -387,6 +387,51 @@ export class RemotePlayersManager {
     return Array.from(this.entities.values()).map((e) => e.networkEntityId);
   }
 
+  public getRemoteCombatTargets(): Array<{
+    playerId: string;
+    position: THREE.Vector3;
+    isAlive: boolean;
+  }> {
+    const out: Array<{ playerId: string; position: THREE.Vector3; isAlive: boolean }> = [];
+    for (const entity of this.entities.values()) {
+      out.push({
+        playerId: entity.playerId,
+        position: entity.displayPos,
+        isAlive: !entity.isDead,
+      });
+    }
+    return out;
+  }
+
+  public getRemotePlayerPositions(): Array<{
+    playerId: string;
+    x: number;
+    y: number;
+    z: number;
+    yaw: number;
+    isDead: boolean;
+  }> {
+    const out: Array<{
+      playerId: string;
+      x: number;
+      y: number;
+      z: number;
+      yaw: number;
+      isDead: boolean;
+    }> = [];
+    for (const entity of this.entities.values()) {
+      out.push({
+        playerId: entity.playerId,
+        x: entity.displayPos.x,
+        y: entity.displayPos.y,
+        z: entity.displayPos.z,
+        yaw: entity.displayYaw,
+        isDead: entity.isDead,
+      });
+    }
+    return out;
+  }
+
   public syncRoster(players: MultiplayerPlayer[], localPlayerId?: string | null): void {
     if (localPlayerId !== undefined) {
       this.localPlayerId = localPlayerId;

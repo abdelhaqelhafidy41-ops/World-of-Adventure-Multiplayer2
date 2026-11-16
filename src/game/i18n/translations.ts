@@ -1175,6 +1175,14 @@ export interface UiStrings {
   profileFriendsCategoryOffline: string;
   profilePagePrev: string;
   profilePageNext: string;
+  mapLegendFriend: string;
+  mapLegendRoomPlayer: string;
+  showFriendsOnMapLabel: string;
+  mpWorldSettingsPermissionLabel: string;
+  mpWorldSettingsHostOnly: string;
+  mpWorldSettingsAllPlayers: string;
+  mpWorldSettingsHostOnlyNotice: string;
+  mpErrorRoomExpired: string;
 }
 
 export const UI_TEXT: Record<Language, UiStrings> = {
@@ -1971,6 +1979,14 @@ export const UI_TEXT: Record<Language, UiStrings> = {
     profileFriendsCategoryOffline: 'OFFLINE',
     profilePagePrev: 'Prev',
     profilePageNext: 'Next',
+    mapLegendFriend: 'Friend',
+    mapLegendRoomPlayer: 'Room Player',
+    showFriendsOnMapLabel: 'Show Room Players & Friends on Map',
+    mpWorldSettingsPermissionLabel: 'Time & Weather Control',
+    mpWorldSettingsHostOnly: 'Host Only',
+    mpWorldSettingsAllPlayers: 'All Players',
+    mpWorldSettingsHostOnlyNotice: 'Only the room host can change world time and weather right now.',
+    mpErrorRoomExpired: 'This room has expired after 72 hours of inactivity.',
   },
   ar: {
     gameTitle: 'عالم المغامرة',
@@ -2764,5 +2780,13 @@ export const UI_TEXT: Record<Language, UiStrings> = {
     profileFriendsCategoryOffline: 'غير متصل',
     profilePagePrev: 'السابق',
     profilePageNext: 'التالي',
+    mapLegendFriend: 'صديق',
+    mapLegendRoomPlayer: 'لاعب في الغرفة',
+    showFriendsOnMapLabel: 'إظهار الأصدقاء ولاعبي الغرفة على الخريطة',
+    mpWorldSettingsPermissionLabel: 'التحكم في الوقت والطقس',
+    mpWorldSettingsHostOnly: 'المضيف فقط',
+    mpWorldSettingsAllPlayers: 'جميع اللاعبين',
+    mpWorldSettingsHostOnlyNotice: 'يمكن لمضيف الغرفة فقط تغيير الوقت والطقس حالياً.',
+    mpErrorRoomExpired: 'انتهت صلاحية هذه الغرفة بعد 72 ساعة من عدم النشاط.',
   },
 };

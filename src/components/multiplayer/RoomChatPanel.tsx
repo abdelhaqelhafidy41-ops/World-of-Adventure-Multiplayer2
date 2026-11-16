@@ -49,9 +49,12 @@ export const RoomChatPanel: React.FC<RoomChatPanelProps> = ({
   const [socialRevision, setSocialRevision] = useState(0);
   const [draft, setDraft] = useState('');
   const [feedbackNotice, setFeedbackNotice] = useState<string | null>(null);
+  const [unreadWhileScrolledUp, setUnreadWhileScrolledUp] = useState(0);
 
+  const listRef = useRef<HTMLDivElement | null>(null);
   const listEndRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const isNearBottomRef = useRef(true);
 
   useEffect(() => {
     setMessages(service.getChatMessages());
@@ -61,8 +64,12 @@ export const RoomChatPanel: React.FC<RoomChatPanelProps> = ({
           if (prev.some((m) => m.id === ev.message.id)) return prev;
           return [...prev, ev.message].slice(-100);
         });
+        if (!isNearBottomRef.current && ev.message.playerId !== service.getLocalPlayerId()) {
+          setUnreadWhileScrolledUp((n) => n + 1);
+        }
       } else if (ev.type === 'chat-history') {
         setMessages(ev.messages);
+        setUnreadWhileScrolledUp(0);
       } else if (ev.type === 'social-updated') {
         setSocialRevision((r) => r + 1);
       } else if (
@@ -91,6 +98,20 @@ export const RoomChatPanel: React.FC<RoomChatPanelProps> = ({
     }
   }, [activeTab, autoFocusInput]);
 
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!vv) return;
+    const onViewportResize = () => {
+      if (activeTab === 'chat' && document.activeElement === inputRef.current) {
+        window.setTimeout(() => {
+          listEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }, 80);
+      }
+    };
+    vv.addEventListener('resize', onViewportResize);
+    return () => vv.removeEventListener('resize', onViewportResize);
+  }, [activeTab]);
+
   const { visibleMessages, hiddenCount } = useMemo(() => {
     void socialRevision;
     const visible: RoomChatMessage[] = [];
@@ -110,8 +131,9 @@ export const RoomChatPanel: React.FC<RoomChatPanelProps> = ({
   }, [messages, service, socialRevision]);
 
   useEffect(() => {
-    if (activeTab === 'chat') {
+    if (activeTab === 'chat' && isNearBottomRef.current) {
       listEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      setUnreadWhileScrolledUp(0);
     }
   }, [visibleMessages.length, activeTab]);
 
@@ -167,10 +189,10 @@ export const RoomChatPanel: React.FC<RoomChatPanelProps> = ({
     <div
       dir={isRtl ? 'rtl' : 'ltr'}
       data-testid="room-chat-panel"
-      className="rounded-xl border border-white/10 bg-[#0c1611] overflow-hidden flex flex-col"
+      className="rounded-xl border border-white/10 bg-[#0c1611] overflow-hidden flex flex-col flex-1 min-h-0 max-h-full"
     >
       {/* Header / Optional Tabs */}
-      <div className="px-3.5 py-2.5 border-b border-white/10 bg-[#101c16] flex items-center justify-between gap-2">
+      <div className="shrink-0 px-3.5 py-2.5 border-b border-white/10 bg-[#101c16] flex items-center justify-between gap-2">
         {showPlayersTab ? (
           <div className="flex items-center gap-1.5">
             <button
@@ -220,9 +242,19 @@ export const RoomChatPanel: React.FC<RoomChatPanelProps> = ({
         <>
           {/* Chat Messages Stream */}
           <div
+            ref={listRef}
             data-testid="room-chat-messages"
-            className={`px-3 py-2.5 overflow-y-auto space-y-2 ${
-              compact ? 'h-48 sm:h-52' : 'h-60 sm:h-72'
+            onScroll={() => {
+              const el = listRef.current;
+              if (!el) return;
+              const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+              isNearBottomRef.current = nearBottom;
+              if (nearBottom && unreadWhileScrolledUp > 0) {
+                setUnreadWhileScrolledUp(0);
+              }
+            }}
+            className={`relative px-3 py-2.5 overflow-y-auto flex-1 min-h-[120px] space-y-2 ${
+              compact ? 'max-h-48 sm:max-h-52' : 'max-h-[46dvh] sm:h-72'
             }`}
           >
             {hiddenCount > 0 && (
@@ -310,11 +342,28 @@ export const RoomChatPanel: React.FC<RoomChatPanelProps> = ({
             <div ref={listEndRef} />
           </div>
 
+          {unreadWhileScrolledUp > 0 && (
+            <div className="shrink-0 px-3 py-1 bg-[#122018] border-t border-[#e5a93c]/25 flex justify-center">
+              <button
+                type="button"
+                data-testid="room-chat-scroll-bottom-btn"
+                onClick={() => {
+                  isNearBottomRef.current = true;
+                  setUnreadWhileScrolledUp(0);
+                  listEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                }}
+                className="text-[11px] font-semibold text-[#e5a93c] hover:text-[#f7d07a] cursor-pointer"
+              >
+                ↓ {unreadWhileScrolledUp}
+              </button>
+            </div>
+          )}
+
           {feedbackNotice && (
             <div
               role="status"
               data-testid="room-chat-feedback"
-              className="px-3 py-1.5 border-t border-[#e5a93c]/25 bg-[#231d11] text-[11px] text-[#f3c66c]"
+              className="shrink-0 px-3 py-1.5 border-t border-[#e5a93c]/25 bg-[#231d11] text-[11px] text-[#f3c66c]"
             >
               {feedbackNotice}
             </div>
@@ -323,15 +372,21 @@ export const RoomChatPanel: React.FC<RoomChatPanelProps> = ({
           {/* Composer */}
           <form
             onSubmit={handleSend}
-            className="p-2.5 border-t border-white/10 bg-[#0e1913] flex items-center gap-2"
+            className="shrink-0 p-2.5 border-t border-white/10 bg-[#0e1913] flex items-center gap-2"
           >
             <input
               ref={inputRef}
               type="text"
+              enterKeyHint="send"
               dir="auto"
               data-testid="room-chat-input"
               maxLength={MAX_CHAT_MESSAGE_LENGTH}
               value={draft}
+              onFocus={() => {
+                window.setTimeout(() => {
+                  listEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                }, 140);
+              }}
               onChange={(e) => {
                 setDraft(e.target.value);
                 if (feedbackNotice) setFeedbackNotice(null);
@@ -340,16 +395,16 @@ export const RoomChatPanel: React.FC<RoomChatPanelProps> = ({
                 isConnected ? t.mpRoomChatPlaceholder : t.mpRoomChatDisconnectedNotice
               }
               disabled={!isConnected}
-              className="flex-1 min-w-0 min-h-[40px] px-3 py-1.5 rounded-xl bg-[#08100c] border border-[#2f493b] focus:border-[#e5a93c] focus:outline-none text-xs sm:text-sm text-[#f7faf5] placeholder-[#687e6d] disabled:opacity-55 [unicode-bidi:plaintext]"
+              className="flex-1 min-w-0 min-h-[42px] px-3 py-1.5 rounded-xl bg-[#08100c] border border-[#2f493b] focus:border-[#e5a93c] focus:outline-none text-xs sm:text-sm text-[#f7faf5] placeholder-[#687e6d] disabled:opacity-55 [unicode-bidi:plaintext]"
             />
             <button
               type="submit"
               data-testid="room-chat-send-btn"
               disabled={!isConnected || !draft.trim()}
-              className="min-h-[40px] px-3.5 py-1.5 rounded-xl bg-[#e5a93c] hover:bg-[#eeb750] disabled:opacity-45 disabled:cursor-not-allowed text-[#111914] font-display font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer shrink-0"
+              className="min-h-[42px] px-3 sm:px-3.5 py-1.5 rounded-xl bg-[#e5a93c] hover:bg-[#eeb750] disabled:opacity-45 disabled:cursor-not-allowed text-[#111914] font-display font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer shrink-0"
             >
               <Send className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">{t.mpRoomChatSendBtn}</span>
+              <span>{t.mpRoomChatSendBtn}</span>
             </button>
           </form>
         </>

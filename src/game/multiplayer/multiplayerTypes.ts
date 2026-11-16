@@ -1,10 +1,14 @@
 import type {
   AuthoritativePlayerVitals,
+  AuthoritativeProgressionState,
   AuthoritativeRoomSnapshot,
   AuthoritativeWorldSettings,
+  AuthoritativeWorldTimeState,
+  AuthoritativeWorldWeatherState,
   ChatHistoryPayload,
   ClientMessageType,
   ConnectionQuality,
+  EnemyAttackPlayerPayload,
   EntitySyncBatchPayload,
   GameEventPayload,
   NetworkEnvelope,
@@ -12,11 +16,14 @@ import type {
   PlayerReportPayload,
   PlayerReportReason,
   PositionCorrectionPayload,
+  RepairWeaponsPayload,
   ReportAckPayload,
   RoomChatMessage,
   RoomPrivacy,
   RoomStatus,
   RoomWorldSnapshotPayload,
+  WorldSettingsPermission,
+  WorldSettingsUpdatePayload,
 } from '../../../shared/multiplayerProtocol';
 import { getConnectionQuality } from '../../../shared/multiplayerProtocol';
 import type { AvatarConfig } from '../../../shared/profileTypes';
@@ -24,11 +31,15 @@ import type { DifficultyLevel, WorldType } from '../save/saveTypes';
 
 export type {
   AuthoritativePlayerVitals,
+  AuthoritativeProgressionState,
   AuthoritativeRoomSnapshot,
   AuthoritativeWorldSettings,
+  AuthoritativeWorldTimeState,
+  AuthoritativeWorldWeatherState,
   ChatHistoryPayload,
   ClientMessageType,
   ConnectionQuality,
+  EnemyAttackPlayerPayload,
   EntitySyncBatchPayload,
   GameEventPayload,
   NetworkEnvelope,
@@ -36,11 +47,14 @@ export type {
   PlayerReportPayload,
   PlayerReportReason,
   PositionCorrectionPayload,
+  RepairWeaponsPayload,
   ReportAckPayload,
   RoomChatMessage,
   RoomPrivacy,
   RoomStatus,
   RoomWorldSnapshotPayload,
+  WorldSettingsPermission,
+  WorldSettingsUpdatePayload,
 };
 export { getConnectionQuality };
 
@@ -101,10 +115,16 @@ export interface MultiplayerRoomState extends MultiplayerRoomSummary {
   isPrivate: boolean;
   allowFriends: boolean;
   requireAllReady: boolean;
+  worldSettingsPermission: WorldSettingsPermission;
   worldSettings: AuthoritativeWorldSettings;
   locked: boolean;
   players: MultiplayerPlayer[];
   createdAt: number;
+  lastActivityAt?: number;
+  expiresAt?: number;
+  worldTime?: AuthoritativeWorldTimeState;
+  worldWeather?: AuthoritativeWorldWeatherState;
+  serverTimestamp?: number;
   durableObjectId?: string;
 }
 
@@ -116,7 +136,10 @@ export interface MultiplayerGameStartInfo {
   seed: number;
   worldType: WorldType;
   difficulty: DifficultyLevel;
+  worldSettingsPermission: WorldSettingsPermission;
   worldSettings: AuthoritativeWorldSettings;
+  worldTime?: AuthoritativeWorldTimeState;
+  worldWeather?: AuthoritativeWorldWeatherState;
   requireAllReady: boolean;
   isHost: boolean;
   localPlayerId: string;
@@ -232,6 +255,7 @@ export interface MultiplayerServiceConfig {
 
 export type MultiplayerJoinErrorCode =
   | 'ROOM_NOT_FOUND'
+  | 'ROOM_EXPIRED'
   | 'ROOM_FULL'
   | 'GAME_ALREADY_STARTED'
   | 'PASSWORD_REQUIRED'
@@ -258,10 +282,55 @@ export type MultiplayerServiceEvent =
   | { type: 'room-updated'; room: MultiplayerRoomState | null }
   | { type: 'player-state'; playerId: string; state: PlayerNetworkState }
   | { type: 'player-vitals'; vitals: AuthoritativePlayerVitals }
+  | { type: 'progression-updated'; progression: AuthoritativeProgressionState }
   | { type: 'position-correction'; correction: PositionCorrectionPayload }
   | { type: 'game-event'; playerId: string; payload: GameEventPayload }
   | { type: 'entity-sync'; playerId: string; payload: EntitySyncBatchPayload }
   | { type: 'world-snapshot'; snapshot: RoomWorldSnapshotPayload }
+  | {
+      type: 'world-time-changed';
+      worldTime: AuthoritativeWorldTimeState;
+      serverTimestamp: number;
+      updatedBy?: string;
+    }
+  | {
+      type: 'world-day-changed';
+      dayCount: number;
+      worldHours: number;
+      serverTimestamp: number;
+      updatedBy?: string;
+    }
+  | {
+      type: 'world-time-scale-changed';
+      timeScale: number;
+      paused: boolean;
+      worldTime: AuthoritativeWorldTimeState;
+      serverTimestamp: number;
+      updatedBy?: string;
+    }
+  | {
+      type: 'world-weather-changed';
+      worldWeather: AuthoritativeWorldWeatherState;
+      triggerLightning?: boolean;
+      serverTimestamp: number;
+      updatedBy?: string;
+    }
+  | {
+      type: 'world-weather-intensity-changed';
+      intensity: number;
+      worldWeather: AuthoritativeWorldWeatherState;
+      serverTimestamp: number;
+      updatedBy?: string;
+    }
+  | {
+      type: 'world-settings-updated';
+      worldSettingsPermission: WorldSettingsPermission;
+      worldTime: AuthoritativeWorldTimeState;
+      worldWeather: AuthoritativeWorldWeatherState;
+      triggerLightning?: boolean;
+      serverTimestamp: number;
+      updatedBy?: string;
+    }
   | {
       type: 'host-transferred';
       previousHostId: string;
@@ -331,6 +400,9 @@ export interface IMultiplayerService {
   sendMessage<T = unknown>(type: ClientMessageType, payload?: T): boolean;
   sendPlayerState(state: PlayerNetworkState, immediate?: boolean): boolean;
   sendEntitySync?(payload: EntitySyncBatchPayload): boolean;
+  sendWorldSettingsUpdate?(payload: WorldSettingsUpdatePayload): boolean;
+  sendEnemyAttackPlayer?(payload: EnemyAttackPlayerPayload): boolean;
+  sendRepairWeapons?(costCoins: number): boolean;
   sendGameEvent(
     event: string,
     data?: Record<string, string | number | boolean | null>,

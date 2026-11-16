@@ -1,6 +1,10 @@
 import type { Language } from '../i18n/translations';
 import type { SavedWeatherState } from '../save/saveTypes';
 import type { BiomeType } from '../types';
+import type {
+  AuthoritativeWorldWeatherState,
+  WorldWeatherState,
+} from '../../../shared/multiplayerProtocol';
 
 export type WeatherState = 'clear' | 'cloudy' | 'rain' | 'storm' | 'fog';
 
@@ -634,5 +638,70 @@ export class WeatherManager {
       Number.isFinite(state.weatherRemainingTime)
         ? Math.max(0, Math.min(this.weatherDuration, state.weatherRemainingTime))
         : this.weatherDuration;
+  }
+
+  public syncFromServer(
+    state: AuthoritativeWorldWeatherState,
+    serverTimestamp?: number,
+    triggerLightning = false,
+  ): void {
+    const mapWeather = (w: WorldWeatherState): WeatherState =>
+      w === 'overcast' ? 'cloudy' : w;
+
+    const target = mapWeather(state.targetState ?? state.currentState);
+    const current = mapWeather(state.currentState);
+
+    this.dynamicEnabled = Boolean(state.dynamicEnabled);
+    this.setTransitionDurationSeconds(state.transitionDurationSeconds);
+
+    const nowRef = serverTimestamp ?? Date.now();
+    const durationSec = Math.max(
+      30,
+      Math.min(
+        MAX_WEATHER_DURATION_SECONDS,
+        Math.round((state.durationMs || 240_000) / 1000),
+      ),
+    );
+    const remainingSec = Math.max(
+      0,
+      Math.min(
+        durationSec,
+        Number.isFinite(state.endMs) ? (state.endMs - nowRef) / 1000 : durationSec,
+      ),
+    );
+
+    this.weatherDuration = durationSec;
+    this.weatherStartTime = this.elapsedWeatherClock;
+    this.weatherRemainingTime = remainingSec;
+
+    const ageSec = Number.isFinite(state.startMs)
+      ? Math.max(0, (nowRef - state.startMs) / 1000)
+      : 0;
+    const isFreshChange = ageSec <= Math.max(2, this.transitionDurationSeconds);
+
+    if (this.targetState !== target || this.currentState !== current) {
+      if (isFreshChange && current !== target) {
+        this.fromParams = { ...this.currentParams };
+        this.targetState = target;
+        this.transitionProgress = Math.max(
+          0,
+          Math.min(0.95, ageSec / Math.max(2, this.transitionDurationSeconds)),
+        );
+      } else if (isFreshChange && this.targetState !== target) {
+        this.fromParams = { ...this.currentParams };
+        this.targetState = target;
+        this.transitionProgress = 0;
+      } else {
+        this.currentState = target;
+        this.targetState = target;
+        this.transitionProgress = 1;
+        this.fromParams = { ...WEATHER_PROFILES[target] };
+        this.currentParams = { ...WEATHER_PROFILES[target] };
+      }
+    }
+
+    if (triggerLightning) {
+      this.triggerLightningStrike();
+    }
   }
 }

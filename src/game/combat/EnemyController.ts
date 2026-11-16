@@ -107,16 +107,29 @@ function dampAngle(current: number, target: number, lambda: number, dt: number):
   return current + diff * (1 - Math.exp(-lambda * dt));
 }
 
+export interface RemoteCombatPlayerTarget {
+  playerId: string;
+  position: THREE.Vector3;
+  isAlive: boolean;
+}
+
 export interface EnemyUpdateContext {
   dt: number;
   elapsed: number;
   camera: THREE.Camera | null;
   playerTarget: CombatTarget;
+  localPlayerId?: string;
+  remoteTargets?: RemoteCombatPlayerTarget[];
   damageSystem: DamageSystem;
   queryCollidersNear: (x: number, z: number) => WorldCollider[];
   isVillageClearance: (x: number, z: number) => boolean;
   onEnemySwing?: (enemy: EnemyController) => void;
   onEnemyAttackHit?: (enemy: EnemyController, result: DamageResult) => void;
+  onEnemyAttackRemotePlayer?: (
+    enemy: EnemyController,
+    targetPlayerId: string,
+    damage: number,
+  ) => void;
   drawDistSq?: number;
   midDistSq?: number;
   shadowDistSq?: number;
@@ -154,6 +167,7 @@ export class EnemyController implements CombatTarget {
   public aggro = false;
   public yaw = 0;
   public networkRemoteControlled = false;
+  public targetPlayerId: string | null = null;
 
   private readonly velocity = new THREE.Vector3();
   private readonly knockbackVel = new THREE.Vector3();
@@ -168,6 +182,8 @@ export class EnemyController implements CombatTarget {
   private respawnTimer = 0;
   private pendingDt = 0;
   private frameTick: number;
+  private lastAttackerPlayerId: string | null = null;
+  private lastAttackerTimer = 0;
   private readonly remoteTargetPos = new THREE.Vector3();
   private remoteTargetYaw = 0;
   private hasRemoteTarget = false;
@@ -254,6 +270,9 @@ export class EnemyController implements CombatTarget {
   public clearAggro(): void {
     if (this.state === 'dead') return;
     this.aggro = false;
+    this.targetPlayerId = null;
+    this.lastAttackerPlayerId = null;
+    this.lastAttackerTimer = 0;
     this.state = 'patrol';
     this.pickNextPatrolPoint();
   }
@@ -261,6 +280,8 @@ export class EnemyController implements CombatTarget {
   public setDefeatedSilent(): void {
     this.state = 'dead';
     this.aggro = false;
+    this.targetPlayerId = null;
+    this.lastAttackerPlayerId = null;
     this.deathElapsed = 10;
     this.respawnTimer = this.archetype.respawnDelay;
     this.velocity.set(0, 0, 0);
@@ -278,6 +299,7 @@ export class EnemyController implements CombatTarget {
     dead: boolean,
     attackerX?: number,
     attackerZ?: number,
+    attackerId?: string,
   ): boolean {
     if (maxHp > 0 && maxHp !== this.health.getMaxHealth()) {
       this.health.setMaxHealth(maxHp, false);
@@ -297,6 +319,11 @@ export class EnemyController implements CombatTarget {
       !this.networkRemoteControlled
     ) {
       this.aggro = true;
+      if (attackerId) {
+        this.lastAttackerPlayerId = attackerId;
+        this.lastAttackerTimer = 8.0;
+        this.targetPlayerId = attackerId;
+      }
       const dx = this.position.x - attackerX;
       const dz = this.position.z - attackerZ;
       const dist = Math.hypot(dx, dz) || 1;
@@ -315,6 +342,7 @@ export class EnemyController implements CombatTarget {
       this.health.syncHealth(0);
       this.state = 'dead';
       this.aggro = false;
+      this.targetPlayerId = null;
       if (justKilled) {
         this.deathElapsed = 0;
         this.respawnTimer = this.archetype.respawnDelay;
@@ -337,6 +365,8 @@ export class EnemyController implements CombatTarget {
     if (typeof delta.hp === 'number' && !delta.isDead) {
       this.health.syncHealth(delta.hp);
     }
+
+    this.targetPlayerId = delta.targetPlayerId ?? null;
 
     const groundY = Math.max(WATER_LEVEL + 0.05, groundHeightAt(delta.x, delta.z));
     this.remoteTargetPos.set(
@@ -376,11 +406,117 @@ export class EnemyController implements CombatTarget {
     this.patrolPauseTimer = 0.8 + this.nextRand() * 2.2;
   }
 
+  private selectBestPlayerTarget(
+    ctx: EnemyUpdateContext,
+    maxRange: number,
+  ): {
+    playerId: string;
+    isLocal: boolean;
+    position: THREE.Vector3;
+    dist: number;
+    dx: number;
+    dz: number;
+  } | null {
+    const localId = ctx.localPlayerId ?? 'local';
+    let best: {
+      playerId: string;
+      isLocal: boolean;
+      position: THREE.Vector3;
+      dist: number;
+      dx: number;
+      dz: number;
+    } | null = null;
+    let currentTarget: {
+      playerId: string;
+      isLocal: boolean;
+      position: THREE.Vector3;
+      dist: number;
+      dx: number;
+      dz: number;
+    } | null = null;
+    let attackerTarget: {
+      playerId: string;
+      isLocal: boolean;
+      position: THREE.Vector3;
+      dist: number;
+      dx: number;
+      dz: number;
+    } | null = null;
+
+    const consider = (
+      playerId: string,
+      isLocal: boolean,
+      position: THREE.Vector3,
+      isAlive: boolean,
+    ) => {
+      if (!isAlive) return;
+      if (ctx.isVillageClearance(position.x, position.z)) return;
+      const dx = position.x - this.position.x;
+      const dz = position.z - this.position.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > maxRange) return;
+      const candidate = { playerId, isLocal, position, dist, dx, dz };
+      if (!best || dist < best.dist) {
+        best = candidate;
+      }
+      if (this.targetPlayerId && playerId === this.targetPlayerId) {
+        currentTarget = candidate;
+      }
+      if (
+        this.lastAttackerTimer > 0 &&
+        this.lastAttackerPlayerId &&
+        playerId === this.lastAttackerPlayerId
+      ) {
+        attackerTarget = candidate;
+      }
+    };
+
+    consider(
+      localId,
+      true,
+      ctx.playerTarget.position,
+      ctx.playerTarget.health.isAlive(),
+    );
+    if (ctx.remoteTargets) {
+      for (let i = 0; i < ctx.remoteTargets.length; i++) {
+        const rt = ctx.remoteTargets[i];
+        consider(rt.playerId, false, rt.position, rt.isAlive);
+      }
+    }
+
+    if (!best) return null;
+    if (attackerTarget) {
+      return attackerTarget;
+    }
+    if (currentTarget) {
+      const cur = currentTarget as { dist: number };
+      const nearest = best as { dist: number };
+      if (nearest.dist < cur.dist * 0.65 && nearest.dist <= this.archetype.detectionRange) {
+        return best;
+      }
+      return currentTarget;
+    }
+    return best;
+  }
+
   public update(ctx: EnemyUpdateContext): void {
     const { dt, elapsed, playerTarget, camera } = ctx;
-    const dxP = playerTarget.position.x - this.position.x;
-    const dzP = playerTarget.position.z - this.position.z;
-    const distSqToPlayer = dxP * dxP + dzP * dzP;
+    const dxViewer = playerTarget.position.x - this.position.x;
+    const dzViewer = playerTarget.position.z - this.position.z;
+    const distSqToViewer = dxViewer * dxViewer + dzViewer * dzViewer;
+
+    let minDistSqToAnyPlayer = distSqToViewer;
+    if (ctx.remoteTargets && ctx.remoteTargets.length > 0) {
+      for (let i = 0; i < ctx.remoteTargets.length; i++) {
+        const rt = ctx.remoteTargets[i];
+        const rx = rt.position.x - this.position.x;
+        const rz = rt.position.z - this.position.z;
+        const rSq = rx * rx + rz * rz;
+        if (rSq < minDistSqToAnyPlayer) {
+          minDistSqToAnyPlayer = rSq;
+        }
+      }
+    }
 
     const drawDistSq = ctx.drawDistSq ?? ENEMY_DRAW_DIST_SQ;
     const midDistSq = ctx.midDistSq ?? ENEMY_SHADOW_DIST_SQ;
@@ -392,7 +528,7 @@ export class EnemyController implements CombatTarget {
       this.deathElapsed += dt;
       this.respawnTimer -= dt;
 
-      if (this.deathElapsed <= 2.4 && distSqToPlayer <= drawDistSq) {
+      if (this.deathElapsed <= 2.4 && distSqToViewer <= drawDistSq) {
         this.rig.root.visible = true;
         this.rig.setLodDetail(false);
         this.rig.updateAnimation(dt, elapsed, 'dead', 0, this.deathElapsed);
@@ -400,25 +536,29 @@ export class EnemyController implements CombatTarget {
         this.rig.root.visible = false;
       }
 
-      if (!this.networkRemoteControlled && this.respawnTimer <= 0 && distSqToPlayer > 28 * 28) {
+      if (!this.networkRemoteControlled && this.respawnTimer <= 0 && minDistSqToAnyPlayer > 28 * 28) {
         this.respawnAtHome();
       }
       return;
     }
 
-    // Distant enemy simulation throttling & visibility culling
-    if (distSqToPlayer > drawDistSq) {
-      this.rig.root.visible = false;
+    const visibleToLocalViewer = distSqToViewer <= drawDistSq;
+    this.rig.root.visible = visibleToLocalViewer;
+    if (visibleToLocalViewer) {
+      this.rig.setLodDetail(distSqToViewer > midDistSq);
+      this.rig.setShadowCasting(shadowsEnabled && distSqToViewer <= shadowDistSq);
+    }
+
+    // Distant enemy simulation throttling & visibility culling (host still runs AI if ANY remote player is near)
+    if (minDistSqToAnyPlayer > drawDistSq) {
       if (!this.networkRemoteControlled) {
         this.aggro = false;
+        this.targetPlayerId = null;
         this.state = 'patrol';
       }
       this.pendingDt = 0;
       return;
     }
-    this.rig.root.visible = true;
-    this.rig.setLodDetail(distSqToPlayer > midDistSq);
-    this.rig.setShadowCasting(shadowsEnabled && distSqToPlayer <= shadowDistSq);
 
     if (this.networkRemoteControlled) {
       this.health.update(dt);
@@ -450,17 +590,19 @@ export class EnemyController implements CombatTarget {
 
       this.rig.root.position.copy(this.position);
       this.rig.root.rotation.y = this.yaw;
-      this.rig.updateAnimation(dt, elapsed, this.state, horizSpeed, 0);
-      const showBar =
-        this.health.getHealthRatio() < 0.999 || distSqToPlayer <= 16.5 * 16.5;
-      this.rig.updateHealthBar(this.health.getHealthRatio(), showBar, camera);
+      if (visibleToLocalViewer) {
+        this.rig.updateAnimation(dt, elapsed, this.state, horizSpeed, 0);
+        const showBar =
+          this.health.getHealthRatio() < 0.999 || distSqToViewer <= 16.5 * 16.5;
+        this.rig.updateHealthBar(this.health.getHealthRatio(), showBar, camera);
+      }
       return;
     }
 
     // Mid-distance non-aggro patrols update every 3rd frame with accumulated dt
     this.frameTick++;
     let stepDt = dt;
-    if (distSqToPlayer > midDistSq && !this.aggro && this.state === 'patrol') {
+    if (minDistSqToAnyPlayer > midDistSq && !this.aggro && this.state === 'patrol') {
       this.pendingDt += dt;
       if (this.frameTick % 3 !== 0) {
         return;
@@ -472,8 +614,14 @@ export class EnemyController implements CombatTarget {
       this.pendingDt = 0;
     }
 
+    if (this.lastAttackerTimer > 0) {
+      this.lastAttackerTimer = Math.max(0, this.lastAttackerTimer - stepDt);
+      if (this.lastAttackerTimer <= 0) {
+        this.lastAttackerPlayerId = null;
+      }
+    }
+
     this.health.update(stepDt);
-    const distToPlayer = Math.sqrt(distSqToPlayer);
 
     // Apply knockback decay
     let hasKnockback = false;
@@ -490,10 +638,15 @@ export class EnemyController implements CombatTarget {
       this.position.x - this.homePosition.x,
       this.position.z - this.homePosition.z,
     );
-    const playerInSafeVillage = ctx.isVillageClearance(
-      playerTarget.position.x,
-      playerTarget.position.z,
+    const activeTarget = this.selectBestPlayerTarget(
+      ctx,
+      this.archetype.detectionRange * 1.9,
     );
+    if (activeTarget) {
+      this.targetPlayerId = activeTarget.playerId;
+    } else if (!this.aggro) {
+      this.targetPlayerId = null;
+    }
 
     let knownSteerH: number | null = null;
     let moved = hasKnockback;
@@ -503,42 +656,42 @@ export class EnemyController implements CombatTarget {
       this.stateTimer -= stepDt;
       this.velocity.set(0, 0, 0);
       if (this.stateTimer <= 0) {
-        this.state = 'chase';
+        this.state = activeTarget ? 'chase' : 'patrol';
       }
     } else if (this.state === 'attack_windup') {
       this.velocity.set(0, 0, 0);
-      this.yaw = dampAngle(this.yaw, Math.atan2(dxP, dzP), 12, stepDt);
+      const aimDx = activeTarget ? activeTarget.dx : dxViewer;
+      const aimDz = activeTarget ? activeTarget.dz : dzViewer;
+      this.yaw = dampAngle(this.yaw, Math.atan2(aimDx, aimDz), 12, stepDt);
       this.stateTimer -= stepDt;
       if (this.stateTimer <= 0) {
-        this.executeMeleeAttack(ctx);
+        this.executeMeleeAttack(ctx, activeTarget);
         this.state = 'attack_recover';
         this.stateTimer = this.archetype.attackCooldown;
       }
     } else if (this.state === 'attack_recover') {
       this.velocity.set(0, 0, 0);
-      this.yaw = dampAngle(this.yaw, Math.atan2(dxP, dzP), 7, stepDt);
+      const aimDx = activeTarget ? activeTarget.dx : dxViewer;
+      const aimDz = activeTarget ? activeTarget.dz : dzViewer;
+      this.yaw = dampAngle(this.yaw, Math.atan2(aimDx, aimDz), 7, stepDt);
       this.stateTimer -= stepDt;
       if (this.stateTimer <= 0) {
-        this.state = this.aggro ? 'chase' : 'patrol';
+        this.state = this.aggro && activeTarget ? 'chase' : 'patrol';
       }
     } else if (this.state === 'chase') {
-      if (
-        !playerTarget.health.isAlive() ||
-        playerInSafeVillage ||
-        distFromHome > this.archetype.leashRange ||
-        distToPlayer > this.archetype.detectionRange * 1.9
-      ) {
+      if (!activeTarget || distFromHome > this.archetype.leashRange) {
         this.aggro = false;
+        this.targetPlayerId = null;
         this.state = 'patrol';
         this.pickNextPatrolPoint();
-      } else if (distToPlayer <= this.archetype.attackRange) {
+      } else if (activeTarget.dist <= this.archetype.attackRange) {
         this.state = 'attack_windup';
         this.stateTimer = this.archetype.attackWindup;
         this.velocity.set(0, 0, 0);
       } else {
         knownSteerH = this.steerToward(
-          playerTarget.position.x,
-          playerTarget.position.z,
+          activeTarget.position.x,
+          activeTarget.position.z,
           this.archetype.chaseSpeed,
           stepDt,
           ctx,
@@ -546,15 +699,12 @@ export class EnemyController implements CombatTarget {
         if (knownSteerH !== null) moved = true;
       }
     } else {
-      // Patrol state: check detection range + aggression
+      // Patrol state: check detection range + aggression across ALL alive players
       const effectiveDetect =
         this.archetype.detectionRange * (0.75 + 0.25 * this.archetype.aggression);
-      if (
-        playerTarget.health.isAlive() &&
-        !playerInSafeVillage &&
-        distToPlayer <= effectiveDetect
-      ) {
+      if (activeTarget && activeTarget.dist <= effectiveDetect) {
         this.aggro = true;
+        this.targetPlayerId = activeTarget.playerId;
         this.state = 'chase';
       } else if (this.patrolPauseTimer > 0) {
         this.patrolPauseTimer -= stepDt;
@@ -591,12 +741,13 @@ export class EnemyController implements CombatTarget {
     this.rig.root.position.copy(this.position);
     this.rig.root.rotation.y = this.yaw;
 
-    const horizSpeed = Math.hypot(this.velocity.x, this.velocity.z);
-    this.rig.updateAnimation(stepDt, elapsed, this.state, horizSpeed, 0);
-
-    const showBar =
-      this.health.getHealthRatio() < 0.999 || distSqToPlayer <= 16.5 * 16.5;
-    this.rig.updateHealthBar(this.health.getHealthRatio(), showBar, camera);
+    if (visibleToLocalViewer) {
+      const horizSpeed = Math.hypot(this.velocity.x, this.velocity.z);
+      this.rig.updateAnimation(stepDt, elapsed, this.state, horizSpeed, 0);
+      const showBar =
+        this.health.getHealthRatio() < 0.999 || distSqToViewer <= 16.5 * 16.5;
+      this.rig.updateHealthBar(this.health.getHealthRatio(), showBar, camera);
+    }
   }
 
   private steerToward(
@@ -660,8 +811,26 @@ export class EnemyController implements CombatTarget {
     return pushed;
   }
 
-  private executeMeleeAttack(ctx: EnemyUpdateContext): void {
+  private executeMeleeAttack(
+    ctx: EnemyUpdateContext,
+    activeTarget: {
+      playerId: string;
+      isLocal: boolean;
+      position: THREE.Vector3;
+      dist: number;
+    } | null,
+  ): void {
     ctx.onEnemySwing?.(this);
+    if (activeTarget && !activeTarget.isLocal) {
+      const dx = activeTarget.position.x - this.position.x;
+      const dz = activeTarget.position.z - this.position.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist <= this.archetype.attackRange + 0.58) {
+        ctx.onEnemyAttackRemotePlayer?.(this, activeTarget.playerId, this.archetype.damage);
+      }
+      return;
+    }
+
     _singleTargetScratch.length = 0;
     _singleTargetScratch.push(ctx.playerTarget);
 
@@ -697,6 +866,9 @@ export class EnemyController implements CombatTarget {
     this.velocity.set(0, 0, 0);
     this.knockbackVel.set(0, 0, 0);
     this.aggro = false;
+    this.targetPlayerId = null;
+    this.lastAttackerPlayerId = null;
+    this.lastAttackerTimer = 0;
     this.state = 'patrol';
     this.deathElapsed = 0;
     this.rig.root.position.copy(this.position);

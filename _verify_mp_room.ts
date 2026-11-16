@@ -560,10 +560,11 @@ async function run() {
   send(hostWs, hostId, 'GAME_EVENT', { event: 'BED_PLACED', data: { bedId: 'bed-1', x: 1, y: 0, z: 4, yaw: 0.5 } });
   send(hostWs, hostId, 'GAME_EVENT', { event: 'BED_USED', data: { bedId: 'bed-1', x: 1, z: 4 } });
   send(hostWs, hostId, 'GAME_EVENT', { event: 'QUEST_UPDATED', data: { questId: 'quest-1', status: 'active', stepIndex: 2 } });
+  send(guestWs, guestId, 'GAME_EVENT', { event: 'QUEST_UPDATED', data: { questId: 'quest-guest', status: 'active', stepIndex: 1 } });
   send(hostWs, hostId, 'GAME_EVENT', { event: 'WORLD_EVENT', data: { kind: 'landmark_discovered', landmarkId: 'lm-ruins' } });
   await flush();
 
-  // 10. Reconnect snapshot contains full synchronized world state
+  // 10. Reconnect snapshot contains full synchronized world state & isolated per-player quests
   const reconnectWsRes = (await roomDO.fetch(
     new Request(`https://internal/ws?playerId=${guestId}&token=${joinJson.sessionToken}`, {
       headers: { Upgrade: 'websocket' },
@@ -577,7 +578,9 @@ async function run() {
   assert.deepEqual(snap.openedChests, ['chest-1']);
   assert.equal((snap.doors as Array<{ id: string; isOpen: boolean }>)[0].isOpen, true);
   assert.equal((snap.placedBeds as Array<{ id: string }>)[0].id, 'bed-1');
-  assert.equal((snap.quests as Array<{ questId: string }>)[0].questId, 'quest-1');
+  const guestQuests = snap.quests as Array<{ questId: string }>;
+  assert.ok(guestQuests.some((q) => q.questId === 'quest-guest'), 'Guest retains own quests on reconnect');
+  assert.ok(!guestQuests.some((q) => q.questId === 'quest-1'), 'Host quests do not leak to guest');
   assert.ok((snap.discoveredLandmarks as string[]).includes('lm-ruins'));
   assert.equal(snap.ammoCount, 11);
   assert.equal(snap.worldHours, 6.5);
@@ -1683,6 +1686,315 @@ async function run() {
   );
   assert.ok(
     (preflightCorsRes.headers.get('Access-Control-Allow-Methods') ?? '').includes('POST'),
+  );
+
+  // 23. Chat sanitization strips HTML/script payloads
+  await new Promise((r) => setTimeout(r, 950));
+  guestMsgs.length = 0;
+  send(hostWs, hostId, 'ROOM_CHAT', {
+    message: '<script>alert(1)</script><img src=x onerror=alert(2)>Hello Safely!',
+  });
+  await flush();
+  const sanitizedChat = guestMsgs.find((m) => m.type === 'ROOM_CHAT');
+  assert.ok(sanitizedChat, 'Sanitized chat message relayed');
+  assert.ok(
+    !String(sanitizedChat!.payload?.message).includes('<') &&
+      !String(sanitizedChat!.payload?.message).includes('>'),
+    'HTML angle brackets removed from relayed chat',
+  );
+  assert.ok(String(sanitizedChat!.payload?.message).includes('Hello Safely!'));
+
+  // 24. Independent coins/XP/level, chest progression, REPAIR_WEAPONS & forged progression rejection
+  const advCreateRes = await workerApp.fetch(
+    new Request('https://worker.example/api/multiplayer/rooms', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'CF-Connecting-IP': '198.51.100.31' },
+      body: JSON.stringify({
+        hostName: 'ProgHost',
+        roomName: 'Persistence Valley',
+        worldType: 'adventure',
+        visibility: 'public',
+        coins: 999999,
+        xp: 999999,
+        level: 99,
+      }),
+    }),
+    fullEnv as never,
+    ctxStub,
+  );
+  assert.equal(advCreateRes.status, 201);
+  const advCreateJson = (await advCreateRes.json()) as {
+    room: { roomId: string; roomCode: string; hostId: string; worldSettingsPermission: string };
+    playerId: string;
+    sessionToken: string;
+  };
+  assert.equal(advCreateJson.room.worldSettingsPermission, 'HOST_ONLY');
+
+  const advJoinRes = await workerApp.fetch(
+    new Request('https://worker.example/api/multiplayer/rooms/join', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'CF-Connecting-IP': '198.51.100.32' },
+      body: JSON.stringify({
+        roomId: advCreateJson.room.roomId,
+        playerName: 'ProgGuest',
+        coins: 88888,
+        xp: 88888,
+        level: 88,
+      }),
+    }),
+    fullEnv as never,
+    ctxStub,
+  );
+  assert.equal(advJoinRes.status, 200);
+  const advJoinJson = (await advJoinRes.json()) as {
+    playerId: string;
+    sessionToken: string;
+  };
+
+  const pHostWsRes = (await workerApp.fetch(
+    new Request(
+      `https://worker.example/api/multiplayer/ws?roomId=${advCreateJson.room.roomId}&playerId=${advCreateJson.playerId}&token=${advCreateJson.sessionToken}`,
+      { headers: { Upgrade: 'websocket' } },
+    ),
+    fullEnv as never,
+    ctxStub,
+  )) as unknown as { status: number; webSocket: MockWebSocket };
+  const pGuestWsRes = (await workerApp.fetch(
+    new Request(
+      `https://worker.example/api/multiplayer/ws?roomId=${advCreateJson.room.roomId}&playerId=${advJoinJson.playerId}&token=${advJoinJson.sessionToken}`,
+      { headers: { Upgrade: 'websocket' } },
+    ),
+    fullEnv as never,
+    ctxStub,
+  )) as unknown as { status: number; webSocket: MockWebSocket };
+
+  const pHostWs = pHostWsRes.webSocket;
+  const pGuestWs = pGuestWsRes.webSocket;
+  const pHostMsgs = collectMessages(pHostWs);
+  const pGuestMsgs = collectMessages(pGuestWs);
+  await flush();
+
+  const hostInitSnap = pHostMsgs.find((m) => m.type === 'WORLD_SNAPSHOT')?.payload as {
+    coins: number;
+    xp: number;
+    level: number;
+  };
+  const guestInitSnap = pGuestMsgs.find((m) => m.type === 'WORLD_SNAPSHOT')?.payload as {
+    coins: number;
+    xp: number;
+    level: number;
+  };
+  assert.equal(hostInitSnap.coins, 50, 'Adventure room grants 50 starter coins, ignoring forged coins');
+  assert.equal(hostInitSnap.xp, 0);
+  assert.equal(hostInitSnap.level, 1);
+  assert.equal(guestInitSnap.coins, 50);
+
+  send(pHostWs, advCreateJson.playerId, 'START_GAME');
+  await flush();
+
+  // Host opens chest -> host receives PROGRESSION_UPDATED (+15 xp, +12 coins), guest remains at 50 coins
+  pHostMsgs.length = 0;
+  pGuestMsgs.length = 0;
+  send(pHostWs, advCreateJson.playerId, 'GAME_EVENT', {
+    event: 'CHEST_OPENED',
+    data: { chestId: 'prog-chest-1', x: 0, y: 0, z: 4 },
+  });
+  await flush();
+  const hostProg = pHostMsgs.find((m) => m.type === 'PROGRESSION_UPDATED')?.payload as {
+    playerId: string;
+    coins: number;
+    xp: number;
+  };
+  assert.ok(hostProg && hostProg.playerId === advCreateJson.playerId);
+  assert.equal(hostProg.coins, 62);
+  assert.equal(hostProg.xp, 15);
+  assert.ok(!pGuestMsgs.some((m) => m.type === 'PROGRESSION_UPDATED'), 'Guest coins/XP unaffected by host chest');
+
+  // Host repairs weapons (-20 coins -> 42 coins) & overspending fails with INSUFFICIENT_COINS
+  pHostMsgs.length = 0;
+  send(pHostWs, advCreateJson.playerId, 'REPAIR_WEAPONS', { costCoins: 20 });
+  await flush();
+  const afterRepair = pHostMsgs.find((m) => m.type === 'PROGRESSION_UPDATED')?.payload as {
+    coins: number;
+  };
+  assert.equal(afterRepair.coins, 42);
+  pHostMsgs.length = 0;
+  send(pHostWs, advCreateJson.playerId, 'REPAIR_WEAPONS', { costCoins: 500 });
+  await flush();
+  assert.ok(
+    pHostMsgs.some((m) => m.type === 'ERROR' && m.payload?.code === 'INSUFFICIENT_COINS'),
+    'Overspending REPAIR_WEAPONS rejected with INSUFFICIENT_COINS',
+  );
+
+  // 25. Host-simulated ENEMY_ATTACK_PLAYER hits remote player; non-host rejected
+  pGuestMsgs.length = 0;
+  send(pGuestWs, advJoinJson.playerId, 'ENEMY_ATTACK_PLAYER', {
+    targetPlayerId: advCreateJson.playerId,
+    sourceKind: 'enemy',
+    sourceId: 'bandit_1',
+    damage: 15,
+  });
+  await flush();
+  assert.ok(
+    pGuestMsgs.some((m) => m.type === 'ERROR' && m.payload?.code === 'FORBIDDEN_HOST_ONLY'),
+    'Non-host cannot emit ENEMY_ATTACK_PLAYER',
+  );
+
+  pHostMsgs.length = 0;
+  pGuestMsgs.length = 0;
+  send(pHostWs, advCreateJson.playerId, 'ENEMY_ATTACK_PLAYER', {
+    targetPlayerId: advJoinJson.playerId,
+    sourceKind: 'enemy',
+    sourceId: 'bandit_1',
+    archetype: 'bandit_scout',
+    damage: 25,
+    x: 0,
+    z: 4,
+  });
+  await flush();
+  const guestVitalsHit = pGuestMsgs.find((m) => m.type === 'PLAYER_VITALS')?.payload as {
+    playerId: string;
+    health: number;
+    maxHealth: number;
+  };
+  assert.ok(guestVitalsHit && guestVitalsHit.playerId === advJoinJson.playerId);
+  assert.ok(guestVitalsHit.health < guestVitalsHit.maxHealth, 'Host enemy attack reduces remote player health');
+
+  // 26. Authoritative World Time, Weather (<=900s cap), & Permissions (HOST_ONLY vs ALL_PLAYERS)
+  pGuestMsgs.length = 0;
+  send(pGuestWs, advJoinJson.playerId, 'WORLD_SETTINGS_UPDATE', { preset: 'sunset' });
+  await flush();
+  assert.ok(
+    pGuestMsgs.some((m) => m.type === 'ERROR' && m.payload?.code === 'FORBIDDEN_WORLD_SETTINGS'),
+    'Guest cannot change time/weather when worldSettingsPermission is HOST_ONLY',
+  );
+
+  pGuestMsgs.length = 0;
+  send(pHostWs, advCreateJson.playerId, 'WORLD_SETTINGS_UPDATE', {
+    worldSettingsPermission: 'ALL_PLAYERS',
+    weatherState: 'storm',
+    targetWeatherState: 'storm',
+    durationMs: 2_000_000,
+  });
+  await flush();
+  const settingsEv = pGuestMsgs.find((m) => m.type === 'WORLD_SETTINGS_UPDATED')?.payload as {
+    worldSettingsPermission: string;
+    worldWeather: { currentState: string; durationMs: number };
+  };
+  assert.ok(settingsEv, 'Guest receives authoritative WORLD_SETTINGS_UPDATED');
+  assert.equal(settingsEv.worldSettingsPermission, 'ALL_PLAYERS');
+  assert.equal(settingsEv.worldWeather.currentState, 'storm');
+  assert.ok(settingsEv.worldWeather.durationMs <= 900_000, 'Weather duration clamped to <= 900,000ms (15 min)');
+
+  pHostMsgs.length = 0;
+  send(pGuestWs, advJoinJson.playerId, 'WORLD_SETTINGS_UPDATE', { preset: 'midnight' });
+  await flush();
+  const timeChanged = pHostMsgs.find((m) => m.type === 'WORLD_TIME_CHANGED')?.payload as {
+    worldTime: { worldHours: number };
+  };
+  assert.ok(timeChanged, 'Guest can change world time when ALL_PLAYERS permission is enabled');
+  assert.equal(timeChanged.worldTime.worldHours, 0);
+
+  // 27. 0-player room persistence in directory, host promotion on rejoin, and explicit CLOSE_ROOM cleanup
+  send(pGuestWs, advJoinJson.playerId, 'LEAVE_ROOM');
+  await flush();
+  send(pHostWs, advCreateJson.playerId, 'LEAVE_ROOM');
+  await flush();
+
+  const listPersistedRes = await workerApp.fetch(
+    new Request('https://worker.example/api/multiplayer/rooms', {
+      headers: { 'CF-Connecting-IP': '198.51.100.33' },
+    }),
+    fullEnv as never,
+    ctxStub,
+  );
+  const listPersistedJson = (await listPersistedRes.json()) as {
+    rooms: Array<{ roomId: string; playerCount: number; status: string }>;
+  };
+  const persistedEntry = listPersistedJson.rooms.find((r) => r.roomId === advCreateJson.room.roomId);
+  assert.ok(persistedEntry, '0-player public room stays listed in RoomDirectoryDO');
+  assert.equal(persistedEntry!.playerCount, 0);
+  assert.equal(persistedEntry!.status, 'waiting');
+
+  const rejoinEmptyRes = await workerApp.fetch(
+    new Request('https://worker.example/api/multiplayer/rooms/join', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'CF-Connecting-IP': '198.51.100.34' },
+      body: JSON.stringify({
+        roomId: advCreateJson.room.roomId,
+        playerName: 'NewHostPlayer',
+      }),
+    }),
+    fullEnv as never,
+    ctxStub,
+  );
+  assert.equal(rejoinEmptyRes.status, 200);
+  const rejoinEmptyJson = (await rejoinEmptyRes.json()) as {
+    playerId: string;
+    sessionToken: string;
+    room: { hostId: string; players: Array<{ id: string; isHost: boolean }> };
+  };
+  assert.equal(
+    rejoinEmptyJson.room.hostId,
+    rejoinEmptyJson.playerId,
+    'Joining a 0-player persisted room promotes the joiner to host',
+  );
+
+  // 28. 72-hour expiration keeps room alive at 71.9h and expires at 72.1h
+  const nowCheck = Date.now();
+  const stillAliveRes = await workerApp.fetch(
+    new Request('https://worker.example/api/multiplayer/rooms/expire-sweep', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'CF-Connecting-IP': '198.51.100.35' },
+      body: JSON.stringify({ nowMs: nowCheck + 71 * 60 * 60 * 1000 }),
+    }),
+    fullEnv as never,
+    ctxStub,
+  );
+  assert.equal(stillAliveRes.status, 200);
+  const verifyStillAlive = await workerApp.fetch(
+    new Request(`https://worker.example/api/multiplayer/rooms/verify?roomId=${advCreateJson.room.roomId}`, {
+      headers: { 'CF-Connecting-IP': '198.51.100.35' },
+    }),
+    fullEnv as never,
+    ctxStub,
+  );
+  assert.equal(verifyStillAlive.status, 200, 'Room still active prior to 72 hours');
+
+  const expiredSweepRes = await workerApp.fetch(
+    new Request('https://worker.example/api/multiplayer/rooms/expire-sweep', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'CF-Connecting-IP': '198.51.100.35' },
+      body: JSON.stringify({ nowMs: nowCheck + 73 * 60 * 60 * 1000 }),
+    }),
+    fullEnv as never,
+    ctxStub,
+  );
+  assert.equal(expiredSweepRes.status, 200);
+  const verifyExpiredRes = await workerApp.fetch(
+    new Request(`https://worker.example/api/multiplayer/rooms/verify?roomId=${advCreateJson.room.roomId}`, {
+      headers: { 'CF-Connecting-IP': '198.51.100.35' },
+    }),
+    fullEnv as never,
+    ctxStub,
+  );
+  assert.equal(verifyExpiredRes.status, 410, 'Room expired after >72 hours returns 410');
+  const verifyExpiredJson = (await verifyExpiredRes.json()) as { code: string };
+  assert.equal(verifyExpiredJson.code, 'ROOM_EXPIRED');
+
+  const listAfterExpire = await workerApp.fetch(
+    new Request('https://worker.example/api/multiplayer/rooms', {
+      headers: { 'CF-Connecting-IP': '198.51.100.35' },
+    }),
+    fullEnv as never,
+    ctxStub,
+  );
+  const listAfterExpireJson = (await listAfterExpire.json()) as {
+    rooms: Array<{ roomId: string }>;
+  };
+  assert.ok(
+    !listAfterExpireJson.rooms.some((r) => r.roomId === advCreateJson.room.roomId),
+    'Expired room removed from RoomDirectoryDO listing',
   );
 
   console.log('ALL MULTIPLAYER & PLAYER PROFILE AUTHORITATIVE SYNC, SECURITY & RESILIENCE TESTS PASSED');

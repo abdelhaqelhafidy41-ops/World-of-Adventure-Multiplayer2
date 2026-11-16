@@ -11,7 +11,11 @@ import type { WorldCollider } from '../types';
 import type { ResolvedGraphicsProfile } from '../engine/GraphicsQualityManager';
 import type { SyncedEntityDelta } from '../../../shared/multiplayerProtocol';
 import { DamageSystem } from './DamageSystem';
-import { EnemyController, type EnemyUpdateContext } from './EnemyController';
+import {
+  EnemyController,
+  type EnemyUpdateContext,
+  type RemoteCombatPlayerTarget,
+} from './EnemyController';
 import { createEnemySharedAssets, type EnemySharedAssets } from './EnemyRig';
 import { HealthComponent } from './HealthComponent';
 import type {
@@ -127,7 +131,16 @@ export class CombatManager {
   private networkRemoteControlled = false;
   private readonly lastSyncSnapshot = new Map<
     string,
-    { x: number; y: number; z: number; yaw: number; state: string; hp: number; isDead: boolean }
+    {
+      x: number;
+      y: number;
+      z: number;
+      yaw: number;
+      state: string;
+      hp: number;
+      isDead: boolean;
+      targetPlayerId?: string;
+    }
   >();
 
   constructor(private readonly options: CombatManagerOptions) {
@@ -302,6 +315,20 @@ export class CombatManager {
     }
   }
 
+  public setMultiplayerTargets(
+    localPlayerId: string | undefined,
+    remoteTargets: RemoteCombatPlayerTarget[],
+    onEnemyAttackRemotePlayer?: (
+      enemy: EnemyController,
+      targetPlayerId: string,
+      damage: number,
+    ) => void,
+  ): void {
+    this.enemyUpdateCtx.localPlayerId = localPlayerId;
+    this.enemyUpdateCtx.remoteTargets = remoteTargets;
+    this.enemyUpdateCtx.onEnemyAttackRemotePlayer = onEnemyAttackRemotePlayer;
+  }
+
   public applyAuthoritativeEnemyDamage(
     enemyId: string,
     hp: number,
@@ -309,6 +336,7 @@ export class CombatManager {
     killed: boolean,
     attackerX?: number,
     attackerZ?: number,
+    attackerId?: string,
   ): { enemy: EnemyController; justKilled: boolean } | null {
     const enemy = this.enemies.find((e) => e.id === enemyId);
     if (!enemy) return null;
@@ -318,6 +346,7 @@ export class CombatManager {
       killed,
       attackerX,
       attackerZ,
+      attackerId,
     );
     if (!killed) {
       this.recentTarget = enemy;
@@ -365,7 +394,8 @@ export class CombatManager {
         Math.abs(e.yaw - prev.yaw) > 0.06 ||
         prev.state !== e.state ||
         prev.hp !== hp ||
-        prev.isDead !== isDead;
+        prev.isDead !== isDead ||
+        prev.targetPlayerId !== (e.targetPlayerId ?? undefined);
 
       if (!moved) continue;
 
@@ -373,6 +403,7 @@ export class CombatManager {
       const y = Math.round(e.position.y * 100) / 100;
       const z = Math.round(e.position.z * 100) / 100;
       const yaw = Math.round(e.yaw * 1000) / 1000;
+      const targetPlayerId = e.targetPlayerId ?? undefined;
 
       this.lastSyncSnapshot.set(e.id, {
         x,
@@ -382,6 +413,7 @@ export class CombatManager {
         state: e.state,
         hp,
         isDead,
+        targetPlayerId,
       });
 
       deltas.push({
@@ -396,6 +428,7 @@ export class CombatManager {
         hp,
         maxHp: e.health.getMaxHealth(),
         isDead,
+        ...(targetPlayerId ? { targetPlayerId } : {}),
       });
     }
 

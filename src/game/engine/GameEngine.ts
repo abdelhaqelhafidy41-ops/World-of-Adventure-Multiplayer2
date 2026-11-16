@@ -72,6 +72,7 @@ import { PostProcessingPipeline } from './PostProcessing';
 import {
   MapManager,
   type MapAnimalEntry,
+  type MapPlayerPin,
   type MapVillageEntry,
   type MapWaypoint,
   type MapWorldData,
@@ -116,8 +117,11 @@ import type {
 import {
   ALLOWED_WEAPON_IDS,
   generateNetworkEntityId,
+  type AuthoritativeWorldTimeState,
+  type AuthoritativeWorldWeatherState,
   type GameEventPayload,
   type PlayerNetworkState,
+  type WorldSettingsPermission,
 } from '../../../shared/multiplayerProtocol';
 
 export interface EngineCallbacks {
@@ -285,6 +289,7 @@ export class GameEngine {
   private isApplyingRemoteTimeWeather = false;
   private isApplyingRemoteWorldEvent = false;
   private lastSyncedWeatherState = '';
+  private worldSettingsPermission: WorldSettingsPermission = 'HOST_ONLY';
   private lastInteractedBed: { id: string; x: number; z: number } | null = null;
   private reducedMotionEnabled = false;
   private vsyncEnabled = true;
@@ -307,6 +312,9 @@ export class GameEngine {
   private biomeDebugEnabled = Boolean(loadExtendedSettings().gameplay.showBiomeDebug);
   private showPlayerNamesSetting = Boolean(
     loadExtendedSettings().gameplay.showPlayerNames,
+  );
+  private showFriendsOnMapSetting = Boolean(
+    loadExtendedSettings().gameplay.showFriendsOnMap,
   );
   private statAccumTimeSec = 0;
   private statAccumDistM = 0;
@@ -385,6 +393,14 @@ export class GameEngine {
     const parts: string[] = [];
     if (xpGain > 0) parts.push(`+${xpGain} ${t.xpShort}`);
     if (coinsGain > 0) parts.push(`+${coinsGain} ${t.coinsLabel}`);
+
+    if (this.multiplayerSessionActive) {
+      if (questTitle) {
+        const rewardSuffix = parts.length > 0 ? ` (${parts.join(', ')})` : '';
+        this.callbacks.onWorldNotice(`${t.questCompletedPrefix}: ${questTitle}${rewardSuffix}`);
+      }
+      return false;
+    }
 
     this.playerCoins += coinsGain;
     this.playerXp += xpGain;
@@ -534,7 +550,11 @@ export class GameEngine {
           this.callbacks.onWorldNotice(t.repairNeedCoinsNotice(costCoins));
           return false;
         }
-        this.playerCoins = Math.max(0, this.playerCoins - costCoins);
+        if (this.multiplayerSessionActive && this.multiplayerService) {
+          this.multiplayerService.sendRepairWeapons?.(costCoins);
+        } else {
+          this.playerCoins = Math.max(0, this.playerCoins - costCoins);
+        }
         this.sound.playInteract();
         this.emitInventorySnapshot();
         this.emitHud();
@@ -1236,6 +1256,69 @@ export class GameEngine {
       }
     }
 
+    const players: MapPlayerPin[] = [];
+    if (
+      this.multiplayerSessionActive &&
+      this.showFriendsOnMapSetting &&
+      this.multiplayerService
+    ) {
+      const room = this.multiplayerService.getRoomState();
+      const roomPlayersById = new Map<string, MultiplayerPlayer>();
+      for (const p of room?.players ?? []) {
+        roomPlayersById.set(p.id, p);
+      }
+      const friendProfileIds = new Set<string>();
+      const friendNames = new Set<string>();
+      for (const f of ProfileManager.getSnapshot().friends) {
+        if (f.publicProfileId) friendProfileIds.add(f.publicProfileId);
+        if (f.displayName) friendNames.add(f.displayName.trim().toLowerCase());
+      }
+      const seenIds = new Set<string>();
+      for (const pos of this.remotePlayersManager?.getRemotePlayerPositions() ?? []) {
+        if (!pos.playerId || pos.playerId === this.localMultiplayerPlayerId) continue;
+        const rp = roomPlayersById.get(pos.playerId);
+        if (!rp || rp.isLocal) continue;
+        seenIds.add(pos.playerId);
+        const isFriend = Boolean(
+          (rp.publicProfileId && friendProfileIds.has(rp.publicProfileId)) ||
+            friendNames.has(rp.displayName.trim().toLowerCase()),
+        );
+        players.push({
+          id: rp.id,
+          name: rp.displayName,
+          relationship: isFriend ? 'friend' : 'room_player',
+          x: pos.x,
+          z: pos.z,
+          isDead: pos.isDead,
+        });
+      }
+      for (const rp of room?.players ?? []) {
+        if (
+          !rp.id ||
+          rp.id === this.localMultiplayerPlayerId ||
+          rp.isLocal ||
+          seenIds.has(rp.id) ||
+          !rp.state ||
+          !Number.isFinite(rp.state.x) ||
+          !Number.isFinite(rp.state.z)
+        ) {
+          continue;
+        }
+        const isFriend = Boolean(
+          (rp.publicProfileId && friendProfileIds.has(rp.publicProfileId)) ||
+            friendNames.has(rp.displayName.trim().toLowerCase()),
+        );
+        players.push({
+          id: rp.id,
+          name: rp.displayName,
+          relationship: isFriend ? 'friend' : 'room_player',
+          x: rp.state.x,
+          z: rp.state.z,
+          isDead: rp.isDead,
+        });
+      }
+    }
+
     return {
       seed: this.world.seed,
       villageSite: this.world.village.site,
@@ -1249,6 +1332,7 @@ export class GameEngine {
         z: npc.position.z,
       })),
       animals,
+      players,
       interactables: this.interactables.map((item) => ({
         id: item.id,
         label: item.label,
@@ -1900,15 +1984,92 @@ export class GameEngine {
     return Boolean(room && localId && room.hostId === localId);
   }
 
+  public isMultiplayerHost(): boolean {
+    return this.isLocalMultiplayerHost();
+  }
+
+  public getWorldSettingsPermission(): WorldSettingsPermission {
+    return this.worldSettingsPermission;
+  }
+
+  public canControlWorldSettings(): boolean {
+    if (!this.multiplayerSessionActive) return true;
+    return this.isLocalMultiplayerHost() || this.worldSettingsPermission === 'ALL_PLAYERS';
+  }
+
+  public setWorldSettingsPermission(permission: WorldSettingsPermission): void {
+    if (
+      !this.multiplayerSessionActive ||
+      !this.multiplayerService ||
+      !this.isLocalMultiplayerHost()
+    ) {
+      return;
+    }
+    this.worldSettingsPermission = permission;
+    this.multiplayerService.sendWorldSettingsUpdate?.({
+      worldSettingsPermission: permission,
+    });
+    this.emitHud();
+  }
+
+  private syncMultiplayerCombatTargets(): void {
+    if (
+      this.multiplayerSessionActive &&
+      this.isLocalMultiplayerHost() &&
+      this.remotePlayersManager
+    ) {
+      const remoteTargets = this.remotePlayersManager.getRemoteCombatTargets();
+      this.combat?.setMultiplayerTargets(
+        this.localMultiplayerPlayerId ?? undefined,
+        remoteTargets,
+        (enemy, targetPlayerId, damage) => {
+          this.multiplayerService?.sendEnemyAttackPlayer?.({
+            targetPlayerId,
+            sourceKind: 'enemy',
+            sourceId: enemy.id,
+            archetype: enemy.archetype.id,
+            damage: Math.max(1, Math.round(damage)),
+            x: Math.round(enemy.position.x * 100) / 100,
+            z: Math.round(enemy.position.z * 100) / 100,
+          });
+        },
+      );
+      this.world?.wildlife.setMultiplayerTargets(
+        this.localMultiplayerPlayerId ?? undefined,
+        remoteTargets,
+        (animalId, species, damage, targetPlayerId) => {
+          const animal = this.world?.wildlife.animals.find((a) => a.id === animalId);
+          this.multiplayerService?.sendEnemyAttackPlayer?.({
+            targetPlayerId,
+            sourceKind: 'animal',
+            sourceId: animalId,
+            archetype: species,
+            damage: Math.max(1, Math.round(damage)),
+            ...(animal
+              ? {
+                  x: Math.round(animal.position.x * 100) / 100,
+                  z: Math.round(animal.position.z * 100) / 100,
+                }
+              : {}),
+          });
+        },
+      );
+    } else {
+      this.combat?.setMultiplayerTargets(undefined, []);
+      this.world?.wildlife.setMultiplayerTargets(undefined, []);
+    }
+  }
+
   private updateMultiplayerAuthorityMode(): void {
     const isHost = this.isLocalMultiplayerHost();
     const remoteControlled = this.multiplayerSessionActive && !isHost;
     this.world?.npcs.setNetworkRemoteControlled(remoteControlled);
     this.world?.wildlife.setNetworkRemoteControlled(remoteControlled);
     this.combat?.setNetworkRemoteControlled(remoteControlled);
-    if (this.multiplayerSessionActive) {
-      this.weatherManager.setDynamicEnabled(isHost);
+    if (this.multiplayerSessionActive && !isHost) {
+      this.weatherManager.setDynamicEnabled(false);
     }
+    this.syncMultiplayerCombatTargets();
   }
 
   private teardownMultiplayerSync(): void {
@@ -1918,6 +2079,7 @@ export class GameEngine {
     this.remotePlayersManager = null;
     this.localMultiplayerPlayerId = null;
     this.localNetworkEntityId = null;
+    this.worldSettingsPermission = 'HOST_ONLY';
     this.mpSyncTimer = 0;
     this.mpKeepaliveTimer = 0;
     this.mpEntitySyncTimer = 0;
@@ -2037,11 +2199,101 @@ export class GameEngine {
         if (!ev.room) {
           this.teardownMultiplayerSync();
         } else {
+          if (ev.room.worldSettingsPermission) {
+            this.worldSettingsPermission = ev.room.worldSettingsPermission;
+          }
           this.remotePlayersManager?.syncRoster(
             ev.room.players,
             this.localMultiplayerPlayerId,
           );
           this.updateMultiplayerAuthorityMode();
+        }
+      } else if (ev.type === 'progression-updated') {
+        if (ev.progression.playerId === this.localMultiplayerPlayerId) {
+          const prevLevel = this.playerLevel;
+          this.playerCoins = Math.max(0, ev.progression.coins);
+          this.playerXp = Math.max(0, ev.progression.xp);
+          this.playerLevel = Math.max(1, ev.progression.level);
+          if (
+            this.playerLevel > prevLevel &&
+            ev.progression.reason !== 'start_game' &&
+            ev.progression.reason !== 'reconnect'
+          ) {
+            this.callbacks.onWorldNotice(
+              `${UI_TEXT[this.language].levelLabel} ${this.playerLevel}!`,
+            );
+          }
+          this.emitHud();
+        }
+      } else if (ev.type === 'world-time-changed') {
+        this.isApplyingRemoteTimeWeather = true;
+        try {
+          this.timeManager.syncFromServer(ev.worldTime, ev.serverTimestamp);
+          this.syncWorldTimeImmediate();
+          this.emitHud();
+        } finally {
+          this.isApplyingRemoteTimeWeather = false;
+        }
+      } else if (ev.type === 'world-day-changed') {
+        this.isApplyingRemoteTimeWeather = true;
+        try {
+          this.timeManager.restoreState({
+            ...this.timeManager.exportState(),
+            dayCount: ev.dayCount,
+            worldHours: ev.worldHours,
+          });
+          this.syncWorldTimeImmediate();
+          this.emitHud();
+        } finally {
+          this.isApplyingRemoteTimeWeather = false;
+        }
+      } else if (ev.type === 'world-time-scale-changed') {
+        this.isApplyingRemoteTimeWeather = true;
+        try {
+          this.timeManager.syncFromServer(ev.worldTime, ev.serverTimestamp);
+          this.syncWorldTimeImmediate();
+          this.emitHud();
+        } finally {
+          this.isApplyingRemoteTimeWeather = false;
+        }
+      } else if (ev.type === 'world-weather-changed') {
+        this.isApplyingRemoteTimeWeather = true;
+        try {
+          this.weatherManager.syncFromServer(
+            ev.worldWeather,
+            ev.serverTimestamp,
+            Boolean(ev.triggerLightning),
+          );
+          this.lastSyncedWeatherState = this.weatherManager.getSnapshot().currentState;
+          this.syncWorldTimeImmediate();
+          this.emitHud();
+        } finally {
+          this.isApplyingRemoteTimeWeather = false;
+        }
+      } else if (ev.type === 'world-weather-intensity-changed') {
+        this.isApplyingRemoteTimeWeather = true;
+        try {
+          this.weatherManager.syncFromServer(ev.worldWeather, ev.serverTimestamp, false);
+          this.syncWorldTimeImmediate();
+          this.emitHud();
+        } finally {
+          this.isApplyingRemoteTimeWeather = false;
+        }
+      } else if (ev.type === 'world-settings-updated') {
+        this.isApplyingRemoteTimeWeather = true;
+        try {
+          this.worldSettingsPermission = ev.worldSettingsPermission;
+          this.timeManager.syncFromServer(ev.worldTime, ev.serverTimestamp);
+          this.weatherManager.syncFromServer(
+            ev.worldWeather,
+            ev.serverTimestamp,
+            Boolean(ev.triggerLightning),
+          );
+          this.lastSyncedWeatherState = this.weatherManager.getSnapshot().currentState;
+          this.syncWorldTimeImmediate();
+          this.emitHud();
+        } finally {
+          this.isApplyingRemoteTimeWeather = false;
         }
       } else if (ev.type === 'player-vitals') {
         if (ev.vitals.playerId === this.localMultiplayerPlayerId) {
@@ -2075,11 +2327,17 @@ export class GameEngine {
           this.reconcileLocalArrowCount(0);
           this.sound.playBowEmpty();
           this.callbacks.onWorldNotice(UI_TEXT[this.language].bowNoArrowsNotice);
+        } else if (ev.code === 'FORBIDDEN_WORLD_SETTINGS') {
+          this.callbacks.onWorldNotice(
+            UI_TEXT[this.language].mpWorldSettingsHostOnlyNotice,
+          );
         } else if (
           ev.code === 'WEAPON_NOT_OWNED' ||
           ev.code === 'CHEST_ALREADY_OPENED' ||
           ev.code === 'ALREADY_COLLECTED' ||
-          ev.code === 'RESOURCE_DEPLETED'
+          ev.code === 'RESOURCE_DEPLETED' ||
+          ev.code === 'INSUFFICIENT_COINS' ||
+          ev.code === 'ROOM_EXPIRED'
         ) {
           this.callbacks.onWorldNotice(ev.message);
         }
@@ -2198,12 +2456,29 @@ export class GameEngine {
           this.world.npcs.applyAuthoritativeDamage(dead.id, 0, 100, true);
         }
       }
-      if (typeof snap.worldHours === 'number' && Number.isFinite(snap.worldHours)) {
+      if (snap.worldSettingsPermission) {
+        this.worldSettingsPermission = snap.worldSettingsPermission;
+      }
+      if (snap.worldTime) {
+        this.timeManager.syncFromServer(snap.worldTime, snap.serverTimestamp);
+      } else if (typeof snap.worldHours === 'number' && Number.isFinite(snap.worldHours)) {
         this.timeManager.setWorldHours(snap.worldHours);
       }
-      if (typeof snap.weather === 'string' && this.isValidWeatherState(snap.weather)) {
+      if (snap.worldWeather) {
+        this.weatherManager.syncFromServer(snap.worldWeather, snap.serverTimestamp);
+        this.lastSyncedWeatherState = this.weatherManager.getSnapshot().currentState;
+      } else if (typeof snap.weather === 'string' && this.isValidWeatherState(snap.weather)) {
         this.lastSyncedWeatherState = snap.weather;
         this.weatherManager.setWeather(snap.weather, true);
+      }
+      if (typeof snap.coins === 'number' && Number.isFinite(snap.coins)) {
+        this.playerCoins = Math.max(0, snap.coins);
+      }
+      if (typeof snap.xp === 'number' && Number.isFinite(snap.xp)) {
+        this.playerXp = Math.max(0, snap.xp);
+      }
+      if (typeof snap.level === 'number' && Number.isFinite(snap.level)) {
+        this.playerLevel = Math.max(1, snap.level);
       }
       if (typeof snap.ammoCount === 'number' && Number.isFinite(snap.ammoCount)) {
         this.reconcileLocalArrowCount(snap.ammoCount);
@@ -2232,7 +2507,7 @@ export class GameEngine {
 
     if (typeof payload.worldHours === 'number' && Number.isFinite(payload.worldHours)) {
       const diff = Math.abs(payload.worldHours - this.timeManager.getWorldHours());
-      if (diff > 0.04 && diff < 23.96) {
+      if (diff > 0.15 && diff < 23.85) {
         this.timeManager.setWorldHours(payload.worldHours);
       }
     }
@@ -2339,6 +2614,7 @@ export class GameEngine {
           false,
           atkCoords.x,
           atkCoords.z,
+          attackerId,
         );
         this.combat.spawnHitSparks(x, y, z, isCrit ? 7 : 4);
         if (attackerId === this.localMultiplayerPlayerId) {
@@ -2364,15 +2640,12 @@ export class GameEngine {
           true,
           atkCoords.x,
           atkCoords.z,
+          killerId,
         );
         if (res?.justKilled) {
           this.spawnDustBurst(x, y, z, 6);
           if (killerId === this.localMultiplayerPlayerId) {
             this.sound.playEnemyDefeat();
-            const leveledUp = this.awardXpAndCoins(
-              res.enemy.archetype.xpReward,
-              res.enemy.archetype.coinReward,
-            );
             this.recordEnemyKill(res.enemy.archetype.id);
             const enemyName =
               this.language === 'ar'
@@ -2383,9 +2656,7 @@ export class GameEngine {
               res.enemy.archetype.xpReward,
               res.enemy.archetype.coinReward,
             );
-            this.callbacks.onWorldNotice(
-              leveledUp ? `${baseMsg}${t.levelUpSuffix(this.playerLevel)}` : baseMsg,
-            );
+            this.callbacks.onWorldNotice(baseMsg);
           }
           this.emitHud();
         }
@@ -2652,7 +2923,7 @@ export class GameEngine {
       case 'QUEST_UPDATED': {
         const updatedBy =
           typeof data.updatedBy === 'string' ? data.updatedBy : senderPlayerId;
-        if (updatedBy === this.localMultiplayerPlayerId) return;
+        if (updatedBy !== this.localMultiplayerPlayerId) return;
         const questId = typeof data.questId === 'string' ? data.questId : '';
         const status = typeof data.status === 'string' ? data.status : 'active';
         const stepIndex = typeof data.stepIndex === 'number' ? data.stepIndex : 0;
@@ -2961,6 +3232,9 @@ export class GameEngine {
     seed: number;
     worldType: WorldType;
     difficulty: DifficultyLevel;
+    worldSettingsPermission?: WorldSettingsPermission;
+    worldTime?: AuthoritativeWorldTimeState;
+    worldWeather?: AuthoritativeWorldWeatherState;
     localPlayerId?: string;
     players?: MultiplayerPlayer[];
   }): boolean {
@@ -2975,6 +3249,7 @@ export class GameEngine {
       worldType: options.worldType,
       difficulty: options.difficulty,
     };
+    this.worldSettingsPermission = options.worldSettingsPermission ?? 'HOST_ONLY';
 
     this.sound.unlock();
     this.sound.playUiClick();
@@ -3020,15 +3295,23 @@ export class GameEngine {
     });
     this.world.wildlife.restoreKilledAnimalIds([]);
 
-    this.timeManager.restoreState({
-      worldHours: 8.5,
-      dayCount: 1,
-      fullDayDurationSeconds: 360,
-      timeScale: 1,
-      paused: false,
-    });
-    this.weatherManager.setWeather('clear', true);
-    this.weatherManager.setDynamicEnabled(true);
+    if (options.worldTime) {
+      this.timeManager.syncFromServer(options.worldTime);
+    } else {
+      this.timeManager.restoreState({
+        worldHours: 8.5,
+        dayCount: 1,
+        fullDayDurationSeconds: 360,
+        timeScale: 1,
+        paused: false,
+      });
+    }
+    if (options.worldWeather) {
+      this.weatherManager.syncFromServer(options.worldWeather);
+    } else {
+      this.weatherManager.setWeather('clear', true);
+      this.weatherManager.setDynamicEnabled(true);
+    }
 
     this.controller.reset(0, 4);
     this.waypoint = null;
@@ -3149,32 +3432,115 @@ export class GameEngine {
   }
 
   public setTimeHours(hours: number): void {
+    if (
+      this.multiplayerSessionActive &&
+      !this.isApplyingRemoteTimeWeather &&
+      !this.canControlWorldSettings()
+    ) {
+      this.callbacks.onWorldNotice(UI_TEXT[this.language].mpWorldSettingsHostOnlyNotice);
+      return;
+    }
     this.timeManager.setWorldHours(hours);
+    if (
+      this.multiplayerSessionActive &&
+      this.multiplayerService &&
+      !this.isApplyingRemoteTimeWeather
+    ) {
+      this.multiplayerService.sendWorldSettingsUpdate?.({
+        worldHours: this.timeManager.getWorldHours(),
+      });
+    }
     this.syncWorldTimeImmediate();
     this.emitHud();
   }
 
   public jumpToTimePreset(preset: TimePreset): void {
+    if (
+      this.multiplayerSessionActive &&
+      !this.isApplyingRemoteTimeWeather &&
+      !this.canControlWorldSettings()
+    ) {
+      this.callbacks.onWorldNotice(UI_TEXT[this.language].mpWorldSettingsHostOnlyNotice);
+      return;
+    }
     this.sound.playUiClick();
     this.timeManager.jumpToPreset(preset);
+    if (
+      this.multiplayerSessionActive &&
+      this.multiplayerService &&
+      !this.isApplyingRemoteTimeWeather
+    ) {
+      this.multiplayerService.sendWorldSettingsUpdate?.({ preset });
+    }
     this.syncWorldTimeImmediate();
     this.emitHud();
   }
 
   public setFullDayDurationSeconds(seconds: number): void {
+    if (
+      this.multiplayerSessionActive &&
+      !this.isApplyingRemoteTimeWeather &&
+      !this.canControlWorldSettings()
+    ) {
+      this.callbacks.onWorldNotice(UI_TEXT[this.language].mpWorldSettingsHostOnlyNotice);
+      return;
+    }
     this.timeManager.setFullDayDurationSeconds(seconds);
+    if (
+      this.multiplayerSessionActive &&
+      this.multiplayerService &&
+      !this.isApplyingRemoteTimeWeather
+    ) {
+      this.multiplayerService.sendWorldSettingsUpdate?.({
+        fullDayDurationSeconds: this.timeManager.getFullDayDurationSeconds(),
+      });
+    }
     this.emitHud();
   }
 
   public setTimeScale(scale: number): void {
+    if (
+      this.multiplayerSessionActive &&
+      !this.isApplyingRemoteTimeWeather &&
+      !this.canControlWorldSettings()
+    ) {
+      this.callbacks.onWorldNotice(UI_TEXT[this.language].mpWorldSettingsHostOnlyNotice);
+      return;
+    }
     this.sound.playUiClick();
     this.timeManager.setTimeScale(scale);
+    if (
+      this.multiplayerSessionActive &&
+      this.multiplayerService &&
+      !this.isApplyingRemoteTimeWeather
+    ) {
+      this.multiplayerService.sendWorldSettingsUpdate?.({
+        timeScale: this.timeManager.getTimeScale(),
+      });
+    }
     this.emitHud();
   }
 
   public setTimePaused(paused: boolean): void {
+    if (
+      this.multiplayerSessionActive &&
+      !this.isApplyingRemoteTimeWeather &&
+      !this.canControlWorldSettings()
+    ) {
+      this.callbacks.onWorldNotice(UI_TEXT[this.language].mpWorldSettingsHostOnlyNotice);
+      return;
+    }
     this.sound.playUiClick();
     this.timeManager.setPaused(paused);
+    if (
+      this.multiplayerSessionActive &&
+      this.multiplayerService &&
+      !this.isApplyingRemoteTimeWeather
+    ) {
+      this.multiplayerService.sendWorldSettingsUpdate?.({
+        paused: this.timeManager.isPaused(),
+      });
+    }
     this.emitHud();
   }
 
@@ -3183,18 +3549,27 @@ export class GameEngine {
   }
 
   public setWeatherState(state: WeatherState, immediate = false): void {
+    if (
+      this.multiplayerSessionActive &&
+      !this.isApplyingRemoteTimeWeather &&
+      !this.canControlWorldSettings()
+    ) {
+      this.callbacks.onWorldNotice(UI_TEXT[this.language].mpWorldSettingsHostOnlyNotice);
+      return;
+    }
     this.sound.playUiClick();
     this.weatherManager.setWeather(state, immediate);
     if (
       this.multiplayerSessionActive &&
       this.multiplayerService &&
-      !this.isApplyingRemoteTimeWeather &&
-      this.isLocalMultiplayerHost()
+      !this.isApplyingRemoteTimeWeather
     ) {
+      const snap = this.weatherManager.getSnapshot();
       this.lastSyncedWeatherState = state;
-      this.multiplayerService.sendGameEvent('WORLD_EVENT', {
-        kind: 'weather_changed',
-        weather: state,
+      this.multiplayerService.sendWorldSettingsUpdate?.({
+        weatherState: state,
+        targetWeatherState: state,
+        durationMs: Math.min(900_000, Math.round(snap.weatherDuration * 1000)),
       });
     }
     this.syncWorldTimeImmediate();
@@ -3202,13 +3577,47 @@ export class GameEngine {
   }
 
   public setWeatherDynamic(enabled: boolean): void {
+    if (
+      this.multiplayerSessionActive &&
+      !this.isApplyingRemoteTimeWeather &&
+      !this.canControlWorldSettings()
+    ) {
+      this.callbacks.onWorldNotice(UI_TEXT[this.language].mpWorldSettingsHostOnlyNotice);
+      return;
+    }
     this.sound.playUiClick();
     this.weatherManager.setDynamicEnabled(enabled);
+    if (
+      this.multiplayerSessionActive &&
+      this.multiplayerService &&
+      !this.isApplyingRemoteTimeWeather
+    ) {
+      this.multiplayerService.sendWorldSettingsUpdate?.({
+        dynamicEnabled: enabled,
+      });
+    }
     this.emitHud();
   }
 
   public setWeatherTransitionDuration(seconds: number): void {
+    if (
+      this.multiplayerSessionActive &&
+      !this.isApplyingRemoteTimeWeather &&
+      !this.canControlWorldSettings()
+    ) {
+      this.callbacks.onWorldNotice(UI_TEXT[this.language].mpWorldSettingsHostOnlyNotice);
+      return;
+    }
     this.weatherManager.setTransitionDurationSeconds(seconds);
+    if (
+      this.multiplayerSessionActive &&
+      this.multiplayerService &&
+      !this.isApplyingRemoteTimeWeather
+    ) {
+      this.multiplayerService.sendWorldSettingsUpdate?.({
+        transitionDurationSeconds: seconds,
+      });
+    }
     this.emitHud();
   }
 
@@ -3220,8 +3629,25 @@ export class GameEngine {
   }
 
   public triggerLightningStrike(): void {
+    if (
+      this.multiplayerSessionActive &&
+      !this.isApplyingRemoteTimeWeather &&
+      !this.canControlWorldSettings()
+    ) {
+      this.callbacks.onWorldNotice(UI_TEXT[this.language].mpWorldSettingsHostOnlyNotice);
+      return;
+    }
     this.sound.unlock();
     this.weatherManager.triggerLightningStrike();
+    if (
+      this.multiplayerSessionActive &&
+      this.multiplayerService &&
+      !this.isApplyingRemoteTimeWeather
+    ) {
+      this.multiplayerService.sendWorldSettingsUpdate?.({
+        triggerLightning: true,
+      });
+    }
     this.syncWorldTimeImmediate();
     this.emitHud();
   }
@@ -3325,6 +3751,7 @@ export class GameEngine {
     );
     this.biomeDebugEnabled = Boolean(ext.gameplay.showBiomeDebug);
     this.showPlayerNamesSetting = Boolean(ext.gameplay.showPlayerNames);
+    this.showFriendsOnMapSetting = Boolean(ext.gameplay.showFriendsOnMap);
     this.remotePlayersManager?.setShowPlayerNames(this.showPlayerNamesSetting);
     this.world?.setBiomeDebugEnabled(this.biomeDebugEnabled);
     this.emitHud();
@@ -3658,6 +4085,7 @@ export class GameEngine {
       this.lastFogRevealZ = pz;
     }
 
+    this.syncMultiplayerCombatTargets();
     this.combat.syncPlayerStats(
       this.controller.getHealth(),
       this.controller.getMaxHealth(),
@@ -3681,9 +4109,10 @@ export class GameEngine {
       weatherSnap.currentState !== this.lastSyncedWeatherState
     ) {
       this.lastSyncedWeatherState = weatherSnap.currentState;
-      this.multiplayerService.sendGameEvent('WORLD_EVENT', {
-        kind: 'weather_changed',
-        weather: weatherSnap.currentState,
+      this.multiplayerService.sendWorldSettingsUpdate?.({
+        weatherState: weatherSnap.currentState,
+        targetWeatherState: weatherSnap.targetState,
+        durationMs: Math.min(900_000, Math.round(weatherSnap.weatherDuration * 1000)),
       });
     }
     this.sound.updateWeatherAudio(

@@ -84,6 +84,7 @@ export const MiniMapWidget: React.FC<MiniMapWidgetProps> = ({
         markers,
         npcs: mapData.npcs,
         animals: mapData.animals,
+        players: mapData.players,
         villages: mapData.villages,
         waypoint: activeWaypoint,
         rotateWithPlayer,

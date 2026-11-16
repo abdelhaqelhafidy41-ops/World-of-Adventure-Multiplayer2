@@ -19,6 +19,7 @@ export interface GameplaySettings {
   showFps: boolean;
   showHud: boolean;
   showPlayerNames: boolean;
+  showFriendsOnMap: boolean;
   miniMapRotate: boolean;
   showBowTrajectory: boolean;
   showWorldGenDebug: boolean;
@@ -87,6 +88,7 @@ export function createDefaultExtendedSettings(): ExtendedGameSettings {
       showFps: false,
       showHud: true,
       showPlayerNames: true,
+      showFriendsOnMap: true,
       miniMapRotate: false,
       showBowTrajectory: true,
       showWorldGenDebug: false,
@@ -158,6 +160,10 @@ export function loadExtendedSettings(): ExtendedGameSettings {
           typeof rawGameplay.showPlayerNames === 'boolean'
             ? rawGameplay.showPlayerNames
             : defaults.gameplay.showPlayerNames,
+        showFriendsOnMap:
+          typeof rawGameplay.showFriendsOnMap === 'boolean'
+            ? rawGameplay.showFriendsOnMap
+            : defaults.gameplay.showFriendsOnMap,
         showBiomeDebug:
           typeof rawGameplay.showBiomeDebug === 'boolean'
             ? rawGameplay.showBiomeDebug
