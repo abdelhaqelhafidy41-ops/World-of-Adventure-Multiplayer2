@@ -72,10 +72,15 @@ import { PlayerProfileDO } from './workers/multiplayer/src/PlayerProfileDO';
 import { RoomDirectoryDO } from './workers/multiplayer/src/RoomDirectoryDO';
 import {
   buildMultiplayerConfig,
+  formatMultiplayerDiagnosticReport,
   getMultiplayerConfig,
   normalizeMultiplayerBaseUrl,
   toWebSocketUrl,
 } from './src/game/multiplayer/multiplayerConfig';
+import {
+  buildRoomShareLink,
+  extractJoinTargetFromUrl,
+} from './src/game/multiplayer/inviteUtils';
 
 function createMockState() {
   const store = new Map<string, unknown>();
@@ -1621,10 +1626,32 @@ async function run() {
   assert.equal(typeof diag.configured, 'boolean');
   assert.ok(!('apiToken' in diag));
 
+  const formattedDiag = formatMultiplayerDiagnosticReport(httpsCfg);
+  assert.ok(formattedDiag.includes('Multiplayer configured: true'));
+  assert.ok(formattedDiag.includes('Multiplayer URL: https://example.workers.dev'));
+  assert.ok(formattedDiag.includes('WebSocket URL: wss://example.workers.dev'));
+  assert.ok(formattedDiag.includes('Environment: production'));
+  assert.ok(!formattedDiag.includes('CLOUDFLARE_API_TOKEN'));
+
+  // Subpath GitHub Pages share link avoids 404 /join/<id> and resolves via ?join=<id>
+  const ghShareLink = buildRoomShareLink(
+    'rm_12345678',
+    'https://abdelhaqelhafidy41-ops.github.io/World-of-Adventure-Multiplayer2/',
+  );
+  assert.equal(
+    ghShareLink,
+    'https://abdelhaqelhafidy41-ops.github.io/World-of-Adventure-Multiplayer2/?join=rm_12345678',
+  );
+  assert.equal(extractJoinTargetFromUrl(ghShareLink), 'rm_12345678');
+
+  const rootShareLink = buildRoomShareLink('rm_12345678', 'https://play.example.com');
+  assert.equal(rootShareLink, 'https://play.example.com/join/rm_12345678');
+  assert.equal(extractJoinTargetFromUrl(rootShareLink), 'rm_12345678');
+
   const healthCorsRes = await workerApp.fetch(
     new Request('https://worker.example/health', {
       method: 'GET',
-      headers: { Origin: 'https://abdelhaq-elhafidy.github.io' },
+      headers: { Origin: 'https://abdelhaqelhafidy41-ops.github.io' },
     }),
     fullEnv as never,
     ctxStub,
@@ -1632,10 +1659,10 @@ async function run() {
   assert.equal(healthCorsRes.status, 200);
   const healthCorsJson = (await healthCorsRes.json()) as { ok?: boolean; service?: string };
   assert.equal(healthCorsJson.ok, true);
-  assert.equal(healthCorsJson.service, 'world-of-adventure-multiplayer');
+  assert.equal(healthCorsJson.service, 'world-of-adventure-multiplayer2');
   assert.equal(
     healthCorsRes.headers.get('Access-Control-Allow-Origin'),
-    'https://abdelhaq-elhafidy.github.io',
+    'https://abdelhaqelhafidy41-ops.github.io',
   );
 
   const preflightCorsRes = await workerApp.fetch(

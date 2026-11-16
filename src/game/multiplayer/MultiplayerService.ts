@@ -63,6 +63,7 @@ import {
 import { FRIENDS_STORAGE_KEY, LocalSocialProvider } from './SocialManager';
 import {
   checkMultiplayerServerHealth,
+  logMultiplayerDiagnosticOnce,
   normalizeMultiplayerBaseUrl,
   resolveMultiplayerServerUrl,
   toWebSocketUrl,
@@ -395,10 +396,11 @@ export class MultiplayerService implements IMultiplayerService {
       try {
         ws = new WebSocket(wsUrl);
       } catch (err) {
+        console.error('[Multiplayer] Failed to open WebSocket connection.', err);
         if (!this.isReconnectingLoop) {
           this.setConnectionState('error');
         }
-        reject(err instanceof Error ? err : new Error('Failed to open WebSocket connection.'));
+        reject(new Error('Unable to connect to multiplayer server.'));
         return;
       }
       this.socket = ws;
@@ -406,6 +408,7 @@ export class MultiplayerService implements IMultiplayerService {
       const timeoutId = window.setTimeout(() => {
         if (!settled) {
           settled = true;
+          console.error('[Multiplayer] WebSocket connection timed out.');
           try {
             ws.close();
           } catch {
@@ -414,7 +417,7 @@ export class MultiplayerService implements IMultiplayerService {
           if (!this.isReconnectingLoop) {
             this.setConnectionState('error');
           }
-          reject(new Error('Multiplayer WebSocket connection timed out.'));
+          reject(new Error('Unable to connect to multiplayer server.'));
         }
       }, 10_000);
 
@@ -455,10 +458,14 @@ export class MultiplayerService implements IMultiplayerService {
         }
         if (!settled) {
           settled = true;
+          console.error('[Multiplayer] WebSocket closed before handshake completed.', {
+            code: closeEvent.code,
+            reason: closeEvent.reason,
+          });
           if (!this.isReconnectingLoop) {
             this.setConnectionState('error');
           }
-          reject(new Error('WebSocket connection closed before handshake completed.'));
+          reject(new Error('Unable to connect to multiplayer server.'));
           return;
         }
         if (closeEvent.code === 4002) {
@@ -470,7 +477,7 @@ export class MultiplayerService implements IMultiplayerService {
             this.disconnect();
             this.emit({
               type: 'room-closed',
-              reason: closeEvent.reason || 'Host closed the room.',
+              reason: closeEvent.reason || 'Room no longer exists.',
             });
           } else {
             this.setConnectionState('disconnected');
@@ -500,15 +507,16 @@ export class MultiplayerService implements IMultiplayerService {
         }
       });
 
-      ws.addEventListener('error', () => {
+      ws.addEventListener('error', (wsErr) => {
         if (this.socket && this.socket !== ws) return;
+        console.error('[Multiplayer] WebSocket transport error.', wsErr);
         if (!settled) {
           settled = true;
           window.clearTimeout(timeoutId);
           if (!this.isReconnectingLoop) {
             this.setConnectionState('error');
           }
-          reject(new Error('Failed to connect to multiplayer WebSocket server.'));
+          reject(new Error('Unable to connect to multiplayer server.'));
         }
       });
     });
@@ -581,7 +589,12 @@ export class MultiplayerService implements IMultiplayerService {
     const data = (await res.json().catch(() => null)) as RoomSessionResponse | null;
 
     if (!res.ok || !data?.ok || !data.room || !data.playerId || !data.sessionToken) {
-      throw new Error(data?.message || data?.error || 'Failed to create room.');
+      console.error('[Multiplayer] Room creation failed.', {
+        status: res.status,
+        error: data?.error,
+        message: data?.message,
+      });
+      throw new Error(data?.message || data?.error || 'Room creation failed.');
     }
 
     const roomState = toRoomState(data.room, data.playerId);
@@ -1833,5 +1846,6 @@ export class MultiplayerService implements IMultiplayerService {
 export function createMultiplayerService(
   socialProvider?: ISocialFriendsAdapter,
 ): IMultiplayerService {
+  logMultiplayerDiagnosticOnce();
   return new MultiplayerService(resolveMultiplayerServerUrl(), socialProvider);
 }

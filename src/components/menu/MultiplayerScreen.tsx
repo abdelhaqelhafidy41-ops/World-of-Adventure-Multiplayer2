@@ -42,6 +42,7 @@ import {
 } from '../../game/multiplayer/MultiplayerService';
 import {
   checkMultiplayerServerHealth,
+  formatMultiplayerDiagnosticReport,
   getMultiplayerConfig,
 } from '../../game/multiplayer/multiplayerConfig';
 import {
@@ -231,11 +232,12 @@ export const MultiplayerScreen: React.FC<MultiplayerScreenProps> = ({
 
   const formatServiceError = useCallback(
     (err: unknown, fallbackMessage: string): string => {
+      console.error('[Multiplayer]', err);
       if (!service.isConfigured()) {
         return `${t.mpNotConfiguredTitle} ${t.mpNotConfiguredHint}`;
       }
       if (err instanceof MultiplayerServiceUnavailableError) {
-        return t.mpStatusServerUnavailable;
+        return t.mpErrorUnableToConnect;
       }
       if (err instanceof Error) {
         const lower = err.message.toLowerCase();
@@ -244,20 +246,27 @@ export const MultiplayerScreen: React.FC<MultiplayerScreenProps> = ({
           lower.includes('failed to fetch') ||
           lower.includes('networkerror') ||
           lower.includes('network request failed') ||
-          lower.includes('load failed')
+          lower.includes('load failed') ||
+          lower.includes('unable to connect')
         ) {
-          return t.mpStatusServerUnavailable;
+          return t.mpErrorUnableToConnect;
         }
         return err.message || fallbackMessage;
       }
       return fallbackMessage;
     },
-    [service, t.mpNotConfiguredHint, t.mpNotConfiguredTitle, t.mpStatusServerUnavailable],
+    [
+      service,
+      t.mpErrorUnableToConnect,
+      t.mpNotConfiguredHint,
+      t.mpNotConfiguredTitle,
+    ],
   );
 
   const formatJoinError = useCallback(
     (err: unknown): string => {
       if (err instanceof MultiplayerJoinError) {
+        console.error('[Multiplayer] Join failed:', err.code, err.message);
         switch (err.code) {
           case 'ROOM_NOT_FOUND':
             return t.mpErrorRoomNotFound;
@@ -266,10 +275,10 @@ export const MultiplayerScreen: React.FC<MultiplayerScreenProps> = ({
           case 'GAME_ALREADY_STARTED':
             return t.mpErrorGameAlreadyStarted;
           default:
-            return err.message || t.mpStatusServerUnavailable;
+            return err.message || t.mpErrorUnableToConnect;
         }
       }
-      return formatServiceError(err, t.mpStatusServerUnavailable);
+      return formatServiceError(err, t.mpErrorUnableToConnect);
     },
     [formatServiceError, t],
   );
@@ -491,7 +500,7 @@ export const MultiplayerScreen: React.FC<MultiplayerScreenProps> = ({
       setActiveRoom(joined);
       setSubView('lobby');
     } catch (err) {
-      setErrorNotice(formatServiceError(err, t.mpStatusServerUnavailable));
+      setErrorNotice(formatServiceError(err, t.mpErrorUnableToConnect));
     }
   }, [clearNotices, formatServiceError, playerName, service, t]);
 
@@ -587,7 +596,7 @@ export const MultiplayerScreen: React.FC<MultiplayerScreenProps> = ({
       setActiveRoom(created);
       setSubView('lobby');
     } catch (err) {
-      setErrorNotice(formatServiceError(err, t.mpStatusServerUnavailable));
+      setErrorNotice(formatServiceError(err, t.mpErrorRoomCreationFailed));
     } finally {
       setCreatingRoom(false);
     }
@@ -630,7 +639,7 @@ export const MultiplayerScreen: React.FC<MultiplayerScreenProps> = ({
       await service.startGame();
     } catch (err) {
       setStartingGame(false);
-      setErrorNotice(formatServiceError(err, t.mpStatusServerUnavailable));
+      setErrorNotice(formatServiceError(err, t.mpErrorUnableToConnect));
     }
   };
 
@@ -1238,6 +1247,15 @@ export const MultiplayerScreen: React.FC<MultiplayerScreenProps> = ({
                     <br />
                     {t.mpNotConfiguredHint}
                   </p>
+                )}
+                {import.meta.env.DEV && (
+                  <pre
+                    dir="ltr"
+                    data-testid="mp-dev-diagnostic"
+                    className="text-[11px] font-mono-num text-[#9db1a1] bg-[#0a140f] border border-white/10 rounded-xl px-3 py-2 whitespace-pre-wrap break-all"
+                  >
+                    {formatMultiplayerDiagnosticReport(mpConfig)}
+                  </pre>
                 )}
               </div>
             </div>

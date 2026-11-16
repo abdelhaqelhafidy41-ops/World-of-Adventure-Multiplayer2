@@ -99,6 +99,19 @@ export function toWebSocketUrl(
     return null;
   }
 
+  const isLocalHost =
+    targetUrl.hostname === 'localhost' ||
+    targetUrl.hostname === '127.0.0.1' ||
+    targetUrl.hostname === '[::1]';
+  if (
+    targetUrl.protocol === 'ws:' &&
+    !isLocalHost &&
+    typeof window !== 'undefined' &&
+    window.location?.protocol === 'https:'
+  ) {
+    targetUrl.protocol = 'wss:';
+  }
+
   return pathAndQuery ? targetUrl.toString() : targetUrl.toString().replace(/\/+$/, '');
 }
 
@@ -135,6 +148,7 @@ export function resolvePublicAppUrl(): string | null {
   if (typeof import.meta !== 'undefined') {
     const configured =
       normalizeHttpOnlyUrl(import.meta.env?.VITE_PUBLIC_APP_URL) ??
+      normalizeHttpOnlyUrl(import.meta.env?.PUBLIC_APP_URL) ??
       normalizeHttpOnlyUrl(import.meta.env?.VITE_APP_URL);
     if (configured) return configured;
   }
@@ -144,7 +158,16 @@ export function resolvePublicAppUrl(): string | null {
     typeof window.location?.origin === 'string' &&
     /^https?:\/\//i.test(window.location.origin)
   ) {
-    return window.location.origin.replace(/\/+$/, '');
+    const origin = window.location.origin.replace(/\/+$/, '');
+    if (window.location.hostname.toLowerCase().endsWith('.github.io')) {
+      const firstSegment = (window.location.pathname || '')
+        .split('/')
+        .filter(Boolean)[0];
+      if (firstSegment) {
+        return `${origin}/${firstSegment}`;
+      }
+    }
+    return origin;
   }
 
   return null;
@@ -192,6 +215,25 @@ export function getMultiplayerEnvironmentConfig(): MultiplayerEnvironmentConfig 
     multiplayerUrl: resolveMultiplayerServerUrl(),
     publicAppUrl: resolvePublicAppUrl(),
   };
+}
+
+export function formatMultiplayerDiagnosticReport(
+  config: MultiplayerConfigDiagnostic = getMultiplayerConfig(),
+): string {
+  return [
+    `Multiplayer configured: ${config.configured}`,
+    `Multiplayer URL: ${config.baseUrl ?? 'not configured'}`,
+    `WebSocket URL: ${config.webSocketUrl ?? 'not configured'}`,
+    `Environment: ${config.environment}`,
+  ].join('\n');
+}
+
+let hasLoggedMultiplayerDiagnostic = false;
+
+export function logMultiplayerDiagnosticOnce(): void {
+  if (hasLoggedMultiplayerDiagnostic || typeof window === 'undefined') return;
+  hasLoggedMultiplayerDiagnostic = true;
+  console.info(`[Multiplayer]\n${formatMultiplayerDiagnosticReport()}`);
 }
 
 /**

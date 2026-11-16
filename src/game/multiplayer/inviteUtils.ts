@@ -17,13 +17,26 @@ export function getMultiplayerAppDomain(): string {
 }
 
 /**
- * Builds a shareable join link of the form `<domain>/join/<ROOM_ID>`.
+ * Builds a shareable join link. Uses `/?join=<ROOM_ID>` on subpath / static hosts
+ * such as GitHub Pages, or `<domain>/join/<ROOM_ID>` on root origins.
  */
-export function buildRoomShareLink(roomIdOrCode: string): string {
+export function buildRoomShareLink(
+  roomIdOrCode: string,
+  domainOverride?: string | null,
+): string {
   const cleanId = encodeURIComponent(roomIdOrCode.trim());
-  const domain = getMultiplayerAppDomain();
+  const domain = (domainOverride ?? getMultiplayerAppDomain()).replace(/\/+$/, '');
   if (!domain) {
     return `/join/${cleanId}`;
+  }
+  try {
+    const parsed = new URL(domain);
+    const pathname = parsed.pathname.replace(/\/+$/, '');
+    if (pathname.length > 0 || parsed.hostname.toLowerCase().endsWith('.github.io')) {
+      return `${domain}/?join=${cleanId}`;
+    }
+  } catch {
+    // Fall back to /join path if domain is not a standard URL
   }
   return `${domain}/join/${cleanId}`;
 }

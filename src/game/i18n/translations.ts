@@ -1014,6 +1014,8 @@ export interface UiStrings {
   mpErrorRoomNotFound: string;
   mpErrorRoomFull: string;
   mpErrorGameAlreadyStarted: string;
+  mpErrorUnableToConnect: string;
+  mpErrorRoomCreationFailed: string;
   mpVerifyingRoom: string;
   mpRemoveFriendBtn: string;
   // Multiplayer Lobby Extensions (Connection Quality, Ready Policy, Host Transfer, Authoritative World)
@@ -1803,9 +1805,11 @@ export const UI_TEXT: Record<Language, UiStrings> = {
     mpSendInviteBtn: 'Send Invite',
     mpInviteSentNotice: (name) => `Invitation sent to ${name}.`,
     mpInvitedToPlayNotification: (name) => `${name} invited you to play.`,
-    mpErrorRoomNotFound: 'ROOM NOT FOUND',
-    mpErrorRoomFull: 'ROOM IS FULL',
+    mpErrorRoomNotFound: 'Room no longer exists.',
+    mpErrorRoomFull: 'Room is full.',
     mpErrorGameAlreadyStarted: 'GAME ALREADY STARTED',
+    mpErrorUnableToConnect: 'Unable to connect to multiplayer server.',
+    mpErrorRoomCreationFailed: 'Room creation failed.',
     mpVerifyingRoom: 'Verifying room...',
     mpRemoveFriendBtn: 'Remove',
     mpRequireAllReadyLabel: 'REQUIRE ALL PLAYERS READY',
@@ -1874,7 +1878,7 @@ export const UI_TEXT: Record<Language, UiStrings> = {
     mpReportSubmittedNotice: (name) => `Report submitted for ${name}.`,
     mpReportDuplicateNotice: 'You have already reported this player in this room.',
     mpConnectionLostTitle: 'CONNECTION LOST',
-    mpReconnectingSubtitle: 'RECONNECTING...',
+    mpReconnectingSubtitle: 'Connection lost. Reconnecting...',
     mpReconnectAttemptLabel: (attempt, max) => `Attempt ${attempt} of ${max}`,
     mpReconnectFailedTitle: 'CONNECTION LOST',
     mpReconnectFailedDesc:
@@ -2594,9 +2598,11 @@ export const UI_TEXT: Record<Language, UiStrings> = {
     mpSendInviteBtn: 'إرسال دعوة',
     mpInviteSentNotice: (name) => `تم إرسال الدعوة إلى ${name}.`,
     mpInvitedToPlayNotification: (name) => `دعاك ${name} للعب.`,
-    mpErrorRoomNotFound: 'الغرفة غير موجودة',
-    mpErrorRoomFull: 'الغرفة ممتلئة',
+    mpErrorRoomNotFound: 'الغرفة لم تعد موجودة.',
+    mpErrorRoomFull: 'الغرفة ممتلئة.',
     mpErrorGameAlreadyStarted: 'اللعبة قد بدأت بالفعل',
+    mpErrorUnableToConnect: 'تعذّر الاتصال بخادم اللعب الجماعي.',
+    mpErrorRoomCreationFailed: 'فشل إنشاء الغرفة.',
     mpVerifyingRoom: 'جارٍ التحقق من الغرفة...',
     mpRemoveFriendBtn: 'إزالة',
     mpRequireAllReadyLabel: 'اشتراط جاهزية جميع اللاعبين',
@@ -2665,7 +2671,7 @@ export const UI_TEXT: Record<Language, UiStrings> = {
     mpReportSubmittedNotice: (name) => `تم إرسال البلاغ ضد ${name}.`,
     mpReportDuplicateNotice: 'لقد قمت بالإبلاغ عن هذا اللاعب في هذه الغرفة بالفعل.',
     mpConnectionLostTitle: 'انقطع الاتصال',
-    mpReconnectingSubtitle: 'جارٍ إعادة الاتصال...',
+    mpReconnectingSubtitle: 'انقطع الاتصال. جارٍ إعادة الاتصال...',
     mpReconnectAttemptLabel: (attempt, max) => `المحاولة ${attempt} من ${max}`,
     mpReconnectFailedTitle: 'انقطع الاتصال',
     mpReconnectFailedDesc:
