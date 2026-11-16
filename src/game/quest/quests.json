@@ -1,0 +1,464 @@
+[
+  {
+    "id": "quest-help-village",
+    "title": "Help the Village",
+    "giverNpcId": "npc-clara",
+    "turnInNpcId": "npc-rowan",
+    "description": "Aid Oakhollow Village by speaking with the village elder Rowan, gathering 5 fresh Meadow Herbs from the valley, and returning to Rowan.",
+    "sequential": true,
+    "objectives": [
+      {
+        "id": "talk-elder",
+        "type": "talk_to_npc",
+        "description": "Talk to the village elder (Rowan)",
+        "npcId": "npc-rowan"
+      },
+      {
+        "id": "find-herbs",
+        "type": "collect_items",
+        "description": "Find 5 Meadow Herbs",
+        "itemId": "meadow-herb",
+        "requiredCount": 5,
+        "consumeOnComplete": true
+      },
+      {
+        "id": "return-elder",
+        "type": "talk_to_npc",
+        "description": "Return to the elder (Rowan)",
+        "npcId": "npc-rowan"
+      }
+    ],
+    "reward": {
+      "xp": 100,
+      "coins": 50
+    },
+    "rewardSummary": "100 XP · 50 Coins"
+  },
+  {
+    "id": "quest-herbalist-tonic",
+    "title": "Herbalist's Remedy",
+    "giverNpcId": "npc-lyra",
+    "turnInNpcId": "npc-lyra",
+    "description": "Gather 2 Meadow Herbs from forest clearings and deliver them to Lyra at Willow Apothecary.",
+    "sequential": true,
+    "objectives": [
+      {
+        "id": "collect-remedy-herbs",
+        "type": "collect_items",
+        "description": "Collect 2 Meadow Herbs",
+        "itemId": "meadow-herb",
+        "requiredCount": 2
+      },
+      {
+        "id": "deliver-remedy-herbs",
+        "type": "deliver_items",
+        "description": "Deliver 2 Meadow Herbs to Lyra",
+        "itemId": "meadow-herb",
+        "requiredCount": 2,
+        "targetNpcId": "npc-lyra",
+        "consumeOnComplete": true
+      }
+    ],
+    "reward": {
+      "xp": 75,
+      "coins": 30,
+      "health": 20,
+      "stamina": 30,
+      "items": [
+        {
+          "id": "apothecary-tonic",
+          "name": "Apothecary Vitality Tonic",
+          "description": "Distilled by Lyra. Restores +50 Health and +50 Stamina when used.",
+          "count": 1,
+          "usable": true
+        }
+      ]
+    },
+    "rewardSummary": "75 XP · 30 Coins · Apothecary Vitality Tonic"
+  },
+  {
+    "id": "quest-bakery-delivery",
+    "title": "Grain for the Hearth",
+    "giverNpcId": "npc-toby",
+    "turnInNpcId": "npc-bram",
+    "description": "Deliver Toby's Fresh Wheat Sack from the Oakhollow farmstead to Bram at Sunstone Bakery.",
+    "sequential": true,
+    "objectives": [
+      {
+        "id": "deliver-wheat",
+        "type": "deliver_items",
+        "description": "Deliver Fresh Wheat Sack to Bram",
+        "itemId": "farm-grain",
+        "requiredCount": 1,
+        "targetNpcId": "npc-bram",
+        "consumeOnComplete": true
+      }
+    ],
+    "reward": {
+      "xp": 60,
+      "coins": 25,
+      "health": 10,
+      "stamina": 25,
+      "items": [
+        {
+          "id": "hearth-loaf",
+          "name": "Sunstone Hearth Loaf",
+          "description": "Baked fresh by Bram. Restores +35 Health and +40 Stamina when eaten.",
+          "count": 1,
+          "usable": true
+        }
+      ]
+    },
+    "rewardSummary": "60 XP · 25 Coins · Sunstone Hearth Loaf"
+  },
+  {
+    "id": "quest-valley-survey",
+    "title": "Chronicles of the Valley",
+    "giverNpcId": "npc-rowan",
+    "turnInNpcId": "npc-rowan",
+    "description": "Explore the open world to uncover at least 3 landmarks and report your survey findings back to Rowan.",
+    "sequential": true,
+    "objectives": [
+      {
+        "id": "explore-landmarks",
+        "type": "explore_area",
+        "description": "Discover 3 valley landmarks",
+        "minLandmarks": 3
+      },
+      {
+        "id": "report-survey",
+        "type": "talk_to_npc",
+        "description": "Report findings to Rowan",
+        "npcId": "npc-rowan"
+      }
+    ],
+    "reward": {
+      "xp": 90,
+      "coins": 40,
+      "health": 15,
+      "stamina": 100,
+      "items": [
+        {
+          "id": "chronicler-seal",
+          "name": "Oakhollow Chronicler Seal",
+          "description": "An engraved brass seal awarded by Rowan for mapping the valley.",
+          "count": 1,
+          "usable": false
+        }
+      ]
+    },
+    "rewardSummary": "90 XP · 40 Coins · Oakhollow Chronicler Seal"
+  },
+  {
+    "id": "quest-ridge-scouting",
+    "title": "Northern Ridge Scout",
+    "giverNpcId": "npc-alden",
+    "turnInNpcId": "npc-alden",
+    "description": "Travel north to inspect the Highland Pass Signpost at the mountain trailhead, then report back to Warden Alden.",
+    "sequential": true,
+    "objectives": [
+      {
+        "id": "reach-highland-pass",
+        "type": "reach_location",
+        "description": "Reach the Highland Pass Signpost",
+        "x": 10,
+        "z": -138,
+        "radius": 18,
+        "locationName": "Highland Pass Signpost"
+      },
+      {
+        "id": "report-alden",
+        "type": "talk_to_npc",
+        "description": "Report trail status to Warden Alden",
+        "npcId": "npc-alden"
+      }
+    ],
+    "reward": {
+      "xp": 85,
+      "coins": 35,
+      "stamina": 40
+    },
+    "rewardSummary": "85 XP · 35 Coins"
+  },
+  {
+    "id": "quest-desert-expedition",
+    "title": "Dunes of Sunstone",
+    "giverNpcId": "npc-garrick",
+    "turnInNpcId": "npc-garrick",
+    "description": "Venture east to explore the Sunstone Desert region and return to Outfitter Garrick with your trail notes.",
+    "sequential": true,
+    "objectives": [
+      {
+        "id": "explore-desert",
+        "type": "explore_area",
+        "description": "Explore the Sunstone Desert region",
+        "biome": "Desert"
+      },
+      {
+        "id": "report-garrick",
+        "type": "talk_to_npc",
+        "description": "Return to Outfitter Garrick",
+        "npcId": "npc-garrick"
+      }
+    ],
+    "reward": {
+      "xp": 80,
+      "coins": 45
+    },
+    "rewardSummary": "80 XP · 45 Coins"
+  },
+  {
+    "id": "quest-build-shelter",
+    "title": "Build Your Shelter",
+    "giverNpcId": "npc-corvin",
+    "turnInNpcId": "npc-corvin",
+    "description": "Harvest 10 Wood from forest trees and 5 Plant Fiber, craft a Camp Bed in your Crafting menu, and report back to Woodcutter Corvin.",
+    "sequential": true,
+    "objectives": [
+      {
+        "id": "collect-shelter-wood",
+        "type": "collect_items",
+        "description": "Gather 10 Wood",
+        "itemId": "wood",
+        "requiredCount": 10
+      },
+      {
+        "id": "collect-shelter-fiber",
+        "type": "collect_items",
+        "description": "Gather 5 Plant Fiber",
+        "itemId": "fiber",
+        "requiredCount": 5
+      },
+      {
+        "id": "craft-camp-bed",
+        "type": "craft_item",
+        "description": "Craft a Camp Bed",
+        "itemId": "bed",
+        "requiredCount": 1
+      },
+      {
+        "id": "return-corvin",
+        "type": "talk_to_npc",
+        "description": "Speak with Woodcutter Corvin",
+        "npcId": "npc-corvin"
+      }
+    ],
+    "reward": {
+      "xp": 95,
+      "coins": 40,
+      "items": [
+        {
+          "id": "hearth-loaf",
+          "name": "Sunstone Hearth Loaf",
+          "description": "Baked fresh by Bram. Restores +35 Health and +40 Stamina when eaten.",
+          "count": 1,
+          "usable": true
+        }
+      ]
+    },
+    "rewardSummary": "95 XP · 40 Coins · Sunstone Hearth Loaf"
+  },
+  {
+    "id": "quest-first-night",
+    "title": "Through the Quiet Night",
+    "giverNpcId": "npc-thorne",
+    "turnInNpcId": "npc-thorne",
+    "description": "Find a bed in any village home, exploration camp, or your own placed camp bed, sleep until dawn, and return to Elder Thorne.",
+    "sequential": true,
+    "objectives": [
+      {
+        "id": "sleep-through-night",
+        "type": "sleep_night",
+        "description": "Sleep in a bed at night",
+        "requiredCount": 1
+      },
+      {
+        "id": "report-thorne-sleep",
+        "type": "talk_to_npc",
+        "description": "Greet Elder Thorne in the morning",
+        "npcId": "npc-thorne"
+      }
+    ],
+    "reward": {
+      "xp": 100,
+      "coins": 50,
+      "health": 20,
+      "stamina": 20
+    },
+    "rewardSummary": "100 XP · 50 Coins"
+  },
+  {
+    "id": "quest-the-village",
+    "title": "Seven Settlements",
+    "giverNpcId": "npc-thorne",
+    "turnInNpcId": "npc-thorne",
+    "description": "Chart the expanded realm by discovering at least 8 landmarks, camps, or regional villages across the world, then report back to Elder Thorne.",
+    "sequential": true,
+    "objectives": [
+      {
+        "id": "discover-realm-sites",
+        "type": "explore_area",
+        "description": "Discover 8 villages or landmarks",
+        "minLandmarks": 8
+      },
+      {
+        "id": "report-thorne-realm",
+        "type": "talk_to_npc",
+        "description": "Return to Elder Thorne",
+        "npcId": "npc-thorne"
+      }
+    ],
+    "reward": {
+      "xp": 150,
+      "coins": 90
+    },
+    "rewardSummary": "150 XP · 90 Coins"
+  },
+  {
+    "id": "quest-the-blacksmith",
+    "title": "Hammer and Anvil",
+    "giverNpcId": "npc-doran",
+    "turnInNpcId": "npc-doran",
+    "description": "Gather 4 Iron Ore from rocky hills or mines, forge an Iron Sword from your Crafting menu, and show your blade to Blacksmith Doran.",
+    "sequential": true,
+    "objectives": [
+      {
+        "id": "gather-iron-ore",
+        "type": "collect_items",
+        "description": "Collect 4 Iron Ore",
+        "itemId": "iron-ore",
+        "requiredCount": 4
+      },
+      {
+        "id": "forge-iron-sword",
+        "type": "craft_item",
+        "description": "Craft an Iron Sword",
+        "itemId": "iron-sword",
+        "requiredCount": 1
+      },
+      {
+        "id": "report-doran",
+        "type": "talk_to_npc",
+        "description": "Show the sword to Blacksmith Doran",
+        "npcId": "npc-doran"
+      }
+    ],
+    "reward": {
+      "xp": 125,
+      "coins": 65,
+      "items": [
+        {
+          "id": "coal",
+          "name": "Coal",
+          "description": "High-heat mineral fuel used to smelt iron into tempered steel.",
+          "count": 4,
+          "usable": false
+        }
+      ]
+    },
+    "rewardSummary": "125 XP · 65 Coins · 4 Coal"
+  },
+  {
+    "id": "quest-the-hunter",
+    "title": "Hunter's Trail",
+    "giverNpcId": "npc-finnian",
+    "turnInNpcId": "npc-finnian",
+    "description": "Track down 4 wild animals across the meadows and forests, collect 3 cuts of Raw Meat, and bring them to Hunter Finnian.",
+    "sequential": true,
+    "objectives": [
+      {
+        "id": "hunt-game",
+        "type": "kill_enemies",
+        "description": "Hunt 4 animals in the wild",
+        "enemyType": "animal:any",
+        "requiredCount": 4
+      },
+      {
+        "id": "deliver-meat",
+        "type": "deliver_items",
+        "description": "Deliver 3 Raw Meat to Finnian",
+        "itemId": "meat",
+        "requiredCount": 3,
+        "targetNpcId": "npc-finnian",
+        "consumeOnComplete": true
+      }
+    ],
+    "reward": {
+      "xp": 130,
+      "coins": 70,
+      "items": [
+        {
+          "id": "arrow",
+          "name": "Hunting Arrows",
+          "description": "Crafted fletched arrows for bows and crossbows.",
+          "count": 10,
+          "usable": false
+        }
+      ]
+    },
+    "rewardSummary": "130 XP · 70 Coins · 10 Arrows"
+  },
+  {
+    "id": "quest-into-the-wild",
+    "title": "Into the Wild Mines",
+    "giverNpcId": "npc-alden",
+    "turnInNpcId": "npc-alden",
+    "description": "Travel far northeast to inspect the old Sunstone Mine shaft and report back to Warden Alden.",
+    "sequential": true,
+    "objectives": [
+      {
+        "id": "reach-sunstone-mine",
+        "type": "reach_location",
+        "description": "Discover Sunstone Mine",
+        "x": 840,
+        "z": -330,
+        "radius": 44,
+        "locationName": "Sunstone Mine"
+      },
+      {
+        "id": "report-alden-mine",
+        "type": "talk_to_npc",
+        "description": "Report findings to Warden Alden",
+        "npcId": "npc-alden"
+      }
+    ],
+    "reward": {
+      "xp": 160,
+      "coins": 95
+    },
+    "rewardSummary": "160 XP · 95 Coins"
+  },
+  {
+    "id": "quest-the-merchant",
+    "title": "Timber for the Caravan",
+    "giverNpcId": "npc-garrick",
+    "turnInNpcId": "npc-garrick",
+    "description": "Outfitter Garrick needs sturdy planks to repair caravan wagons heading east. Deliver 8 Wood to him in Oakhollow Square.",
+    "sequential": true,
+    "objectives": [
+      {
+        "id": "deliver-caravan-wood",
+        "type": "deliver_items",
+        "description": "Deliver 8 Wood to Garrick",
+        "itemId": "wood",
+        "requiredCount": 8,
+        "targetNpcId": "npc-garrick",
+        "consumeOnComplete": true
+      }
+    ],
+    "reward": {
+      "xp": 110,
+      "coins": 75,
+      "items": [
+        {
+          "id": "cooked-meat",
+          "name": "Hearty Roast",
+          "description": "Seared camp roast. Restores +45 Health and +45 Stamina when eaten.",
+          "count": 2,
+          "usable": true
+        }
+      ]
+    },
+    "rewardSummary": "110 XP · 75 Coins · 2 Hearty Roasts"
+  }
+]

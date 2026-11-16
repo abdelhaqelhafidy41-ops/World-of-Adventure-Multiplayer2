@@ -1,0 +1,129 @@
+name: Build Windows Desktop App
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build Windows Installer & Portable EXE
+    runs-on: windows-latest
+
+    env:
+      npm_config_cache: ~/.npm
+      npm_config_omit: ""
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json', '**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Cache Electron & electron-builder binaries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: ${{ runner.os }}-electron-${{ hashFiles('package.json', 'electron-builder.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-
+
+      - name: Clean node_modules before installation
+        shell: bash
+        run: rm -rf node_modules
+
+      - name: Install npm dependencies (including optional native bindings)
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --include=optional
+          else
+            npm install --include=optional
+          fi
+
+      - name: Verify Windows x64 Rolldown and native bindings
+        shell: bash
+        run: |
+          node -e "console.log(process.platform, process.arch)"
+          npm ls rolldown
+          npm ls @rolldown/binding-win32-x64-msvc
+          node -e "require.resolve('@rolldown/binding-win32-x64-msvc')"
+          node -e "require.resolve('lightningcss-win32-x64-msvc')"
+          node -e "require.resolve('@tailwindcss/oxide-win32-x64-msvc')"
+
+      - name: Build web game
+        env:
+          VITE_APP_ENV: ${{ vars.VITE_APP_ENV || 'production' }}
+          VITE_MULTIPLAYER_URL: ${{ vars.VITE_MULTIPLAYER_URL || 'https://world-of-adventure-multiplayer.abdelhaq-elhafidy-41.workers.dev' }}
+          VITE_PUBLIC_APP_URL: ${{ vars.VITE_PUBLIC_APP_URL || '' }}
+        run: npm run build
+
+      - name: Build Windows Electron installer and portable EXE
+        run: npx electron-builder --win --config electron-builder.yml --publish never
+
+      - name: Verify generated Windows build outputs
+        shell: bash
+        run: |
+          if [ ! -d release ]; then
+            echo "::error::The release directory was not created."
+            exit 1
+          fi
+          echo "Contents of release directory:"
+          ls -lh release/
+
+          SETUP_EXE=$(find release -maxdepth 1 -type f -name "World-of-Adventure-Setup-*.exe" | head -n 1)
+          PORTABLE_EXE=$(find release -maxdepth 1 -type f -name "World-of-Adventure-Portable-*.exe" | head -n 1)
+
+          if [ -z "$SETUP_EXE" ] || [ ! -f "$SETUP_EXE" ]; then
+            echo "::error::Windows NSIS installer EXE (World-of-Adventure-Setup-*.exe) is missing from release/."
+            exit 1
+          fi
+          if [ -z "$PORTABLE_EXE" ] || [ ! -f "$PORTABLE_EXE" ]; then
+            echo "::error::Windows portable EXE (World-of-Adventure-Portable-*.exe) is missing from release/."
+            exit 1
+          fi
+          if [ ! -d "release/win-unpacked" ]; then
+            echo "::error::Unpacked Windows build directory (release/win-unpacked) is missing."
+            exit 1
+          fi
+          echo "Verified installer: $SETUP_EXE"
+          echo "Verified portable:  $PORTABLE_EXE"
+
+      - name: Upload Windows Installer EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-of-adventure-windows-installer
+          path: release/World-of-Adventure-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Windows Portable EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-of-adventure-windows-portable
+          path: release/World-of-Adventure-Portable-*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Windows Unpacked Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-of-adventure-windows-unpacked
+          path: release/win-unpacked/**
+          if-no-files-found: error
+          retention-days: 30

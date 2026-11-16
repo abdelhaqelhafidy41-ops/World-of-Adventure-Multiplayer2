@@ -1,0 +1,8 @@
+{
+  "name": "R World of Adventure Multiplayer ",
+  "description": "A web-based 3D open-world exploration game built with Three.js featuring procedural terrain, player movement, and interactive mechanics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

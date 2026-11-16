@@ -1,0 +1,21 @@
+{
+  "name": "world-of-adventure-multiplayer-worker",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "tsc --noEmit && wrangler deploy --env=\"\" --dry-run --outdir dist",
+    "build:staging": "tsc --noEmit && wrangler deploy --env staging --dry-run --outdir dist-staging",
+    "build:production": "tsc --noEmit && wrangler deploy --env production --dry-run --outdir dist-production",
+    "deploy": "wrangler deploy --env=\"\"",
+    "deploy:development": "wrangler deploy --env development",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "wrangler": "^4.0.0"
+  }
+}

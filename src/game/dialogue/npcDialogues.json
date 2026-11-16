@@ -1,0 +1,2888 @@
+{
+  "npc-rowan": {
+    "npcId": "npc-rowan",
+    "defaultStartNodeId": "greet_day",
+    "entryRules": [
+      {
+        "condition": {
+          "questId": "quest-help-village",
+          "questStatusIn": ["ready"]
+        },
+        "nodeId": "help_village_ready"
+      },
+      {
+        "condition": {
+          "questId": "quest-valley-survey",
+          "questStatusIn": ["ready"]
+        },
+        "nodeId": "survey_ready"
+      },
+      {
+        "condition": {
+          "questId": "quest-help-village",
+          "questStatusIn": ["active"]
+        },
+        "nodeId": "help_village_greet"
+      },
+      {
+        "condition": {
+          "questId": "quest-valley-survey",
+          "questStatusIn": ["completed"]
+        },
+        "nodeId": "greet_after_survey"
+      },
+      {
+        "condition": {
+          "periodIn": ["evening", "night"]
+        },
+        "nodeId": "greet_evening"
+      }
+    ],
+    "nodes": {
+      "greet_day": {
+        "id": "greet_day",
+        "lines": [
+          "Good day, traveler! Look how clear the air is across Oakhollow Square.",
+          "As village elder and chronicler, I record every cairn, trail signpost, and wanderer who passes through the valley."
+        ],
+        "choices": [
+          {
+            "id": "ask-help-village",
+            "label": "Is there a task I can do to help the village?",
+            "nextNodeId": "help_village_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-help-village",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-survey-offer",
+            "label": "Do you need help charting the valley?",
+            "nextNodeId": "survey_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-valley-survey",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-survey-progress",
+            "label": "How is the valley survey coming along?",
+            "nextNodeId": "survey_progress",
+            "questTag": "progress",
+            "condition": {
+              "questId": "quest-valley-survey",
+              "questStatusIn": ["active"]
+            }
+          },
+          {
+            "id": "ask-village",
+            "label": "Tell me about Oakhollow Village.",
+            "nextNodeId": "about_village"
+          },
+          {
+            "id": "ask-explore",
+            "label": "Where should I explore first?",
+            "nextNodeId": "explore_tips"
+          },
+          {
+            "id": "bye",
+            "label": "Safe travels, Rowan.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "greet_evening": {
+        "id": "greet_evening",
+        "lines": [
+          "Nothing beats the warm lantern glow around the stone well once dusk settles.",
+          "Most of Oakhollow winds down around this hour, though Sera and Alden keep an eye on the square."
+        ],
+        "choices": [
+          {
+            "id": "ask-help-village",
+            "label": "Is there anything the village needs help with?",
+            "nextNodeId": "help_village_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-help-village",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-survey-offer",
+            "label": "Do you need help charting the valley?",
+            "nextNodeId": "survey_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-valley-survey",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-survey-progress",
+            "label": "Check my valley survey progress.",
+            "nextNodeId": "survey_progress",
+            "questTag": "progress",
+            "condition": {
+              "questId": "quest-valley-survey",
+              "questStatusIn": ["active"]
+            }
+          },
+          {
+            "id": "ask-village",
+            "label": "Tell me about Oakhollow Village.",
+            "nextNodeId": "about_village"
+          },
+          {
+            "id": "bye",
+            "label": "Have a peaceful evening, Rowan.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "greet_after_survey": {
+        "id": "greet_after_survey",
+        "lines": [
+          "Good to see our valley chronicler back in Oakhollow Square!",
+          "Your landmark notes are already copied neatly into the village ledger."
+        ],
+        "choices": [
+          {
+            "id": "ask-help-village",
+            "label": "Does the village still need herbs gathered?",
+            "nextNodeId": "help_village_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-help-village",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-village",
+            "label": "Tell me more about Oakhollow's history.",
+            "nextNodeId": "about_village"
+          },
+          {
+            "id": "ask-explore",
+            "label": "Remind me what lies beyond the valley.",
+            "nextNodeId": "explore_tips"
+          },
+          {
+            "id": "bye",
+            "label": "I'll keep exploring!",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "help_village_greet": {
+        "id": "help_village_greet",
+        "questId": "quest-help-village",
+        "lines": [
+          "Ah, welcome! Clara mentioned she was sending a capable adventurer my way.",
+          "Our village storehouse needs 5 fresh Meadow Herbs from the surrounding glades and hills. Gather 5 bundles and return to me when ready!"
+        ],
+        "choices": [
+          {
+            "id": "ask-herb-spots",
+            "label": "Where can I find 5 Meadow Herbs?",
+            "nextNodeId": "explore_tips"
+          },
+          {
+            "id": "ask-survey-offer",
+            "label": "Do you have any other errands?",
+            "nextNodeId": "survey_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-valley-survey",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "bye",
+            "label": "I'll return once I have 5 herbs.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "help_village_offer": {
+        "id": "help_village_offer",
+        "questId": "quest-help-village",
+        "lines": [
+          "Actually, yes! Winter stores in the Oakhollow hall are running short on dried healing greens.",
+          "If you find 5 Meadow Herbs across the valley clearings and bring them back to me, the village council has set aside 100 XP and 50 coins in thanks!"
+        ],
+        "choices": [
+          {
+            "id": "accept-help-village",
+            "label": "I'll gather 5 Meadow Herbs for the village.",
+            "nextNodeId": "help_village_accepted",
+            "questTag": "accept",
+            "effects": [
+              { "type": "startQuest", "questId": "quest-help-village" },
+              {
+                "type": "notice",
+                "message": "Quest Accepted: Help the Village (Find 5 Meadow Herbs)."
+              }
+            ]
+          },
+          {
+            "id": "decline-help-village",
+            "label": "Maybe later, Rowan.",
+            "nextNodeId": "hub"
+          }
+        ]
+      },
+      "help_village_accepted": {
+        "id": "help_village_accepted",
+        "questId": "quest-help-village",
+        "lines": [
+          "Thank you! Look for golden herb blossoms across the plains and forest glades.",
+          "Return to me as soon as you've gathered 5 bundles in your Explorer Pack."
+        ],
+        "nextNodeId": null
+      },
+      "help_village_ready": {
+        "id": "help_village_ready",
+        "questId": "quest-help-village",
+        "lines": [
+          "Well done! Five fragrant bundles of Meadow Herb—our village storehouse is stocked again.",
+          "Ready to turn in your herbs and claim Oakhollow's reward?"
+        ],
+        "choices": [
+          {
+            "id": "complete-help-village",
+            "label": "Deliver 5 Meadow Herbs and complete 'Help the Village'.",
+            "nextNodeId": "help_village_completed",
+            "questTag": "complete",
+            "effects": [
+              { "type": "completeQuest", "questId": "quest-help-village" }
+            ]
+          },
+          {
+            "id": "hold-on",
+            "label": "Wait a moment—let's discuss something else first.",
+            "nextNodeId": "hub"
+          }
+        ]
+      },
+      "help_village_completed": {
+        "id": "help_village_completed",
+        "questId": "quest-help-village",
+        "lines": [
+          "Oakhollow owes you a sincere debt of gratitude! These herbs will keep every household well through the season.",
+          "Please accept 100 XP and 50 coins from the village treasury!"
+        ],
+        "nextNodeId": null
+      },
+      "hub": {
+        "id": "hub",
+        "lines": ["Is there anything else you'd like to ask about the valley?"],
+        "choices": [
+          {
+            "id": "ask-help-village",
+            "label": "Can I help the village?",
+            "nextNodeId": "help_village_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-help-village",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-survey-offer",
+            "label": "Tell me about the valley survey.",
+            "nextNodeId": "survey_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-valley-survey",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-village",
+            "label": "Tell me about Oakhollow Village.",
+            "nextNodeId": "about_village"
+          },
+          {
+            "id": "ask-explore",
+            "label": "Where should I explore next?",
+            "nextNodeId": "explore_tips"
+          },
+          {
+            "id": "bye",
+            "label": "That's all for now.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "about_village": {
+        "id": "about_village",
+        "lines": [
+          "Oakhollow began as a rest stop beside this deep spring-fed well. Travelers needed bread, bandages, and shelter before crossing the mountains.",
+          "Today Bram runs the bakery, Lyra brews herbal remedies, Toby and Maren tend the eastern farmstead, and our wardens keep the roads clear."
+        ],
+        "nextNodeId": "hub"
+      },
+      "explore_tips": {
+        "id": "explore_tips",
+        "lines": [
+          "Follow the western road through the forest toward the woodland lake and river crossings—golden Meadow Herbs sprout throughout those clearings.",
+          "Head north if you want a steep mountain climb, or travel east into the sunlit desert dunes and southern coastline."
+        ],
+        "nextNodeId": "hub"
+      },
+      "survey_offer": {
+        "id": "survey_offer",
+        "questId": "quest-valley-survey",
+        "lines": [
+          "I'm updating the valley survey map, yet my knees aren't what they used to be for steep ridges.",
+          "If you discover at least 3 landmarks—stone cairns, signposts, herb groves, or the village itself—bring word back to me!"
+        ],
+        "choices": [
+          {
+            "id": "accept-survey",
+            "label": "I'll chart 3 valley landmarks for you.",
+            "nextNodeId": "survey_accepted",
+            "questTag": "accept",
+            "effects": [
+              { "type": "startQuest", "questId": "quest-valley-survey" },
+              {
+                "type": "notice",
+                "message": "Quest Accepted: Chronicles of the Valley (Discover 3 landmarks)."
+              }
+            ]
+          },
+          {
+            "id": "decline-survey",
+            "label": "Maybe later, Rowan.",
+            "nextNodeId": "hub"
+          }
+        ]
+      },
+      "survey_accepted": {
+        "id": "survey_accepted",
+        "questId": "quest-valley-survey",
+        "lines": [
+          "Splendid! Open your World Map anytime with M to see which landmarks you've uncovered.",
+          "Come back as soon as you've spotted three across the valley."
+        ],
+        "nextNodeId": null
+      },
+      "survey_progress": {
+        "id": "survey_progress",
+        "questId": "quest-valley-survey",
+        "lines": [
+          "Keep walking close to stone cairns, trail signposts, or village landmarks to mark them on your map.",
+          "Once you have discovered 3 landmarks, return to me and I'll record your findings."
+        ],
+        "nextNodeId": "hub"
+      },
+      "survey_ready": {
+        "id": "survey_ready",
+        "questId": "quest-valley-survey",
+        "lines": [
+          "You're back! Judging by your field journal, you've already uncovered three or more valley landmarks!",
+          "May I copy those bearings into the official Oakhollow Chronicle?"
+        ],
+        "choices": [
+          {
+            "id": "complete-survey",
+            "label": "Share your landmark bearings and complete the quest.",
+            "nextNodeId": "survey_completed",
+            "questTag": "complete",
+            "effects": [
+              { "type": "completeQuest", "questId": "quest-valley-survey" }
+            ]
+          },
+          {
+            "id": "not-yet",
+            "label": "Hold on—let's chat about something else first.",
+            "nextNodeId": "hub"
+          }
+        ]
+      },
+      "survey_completed": {
+        "id": "survey_completed",
+        "questId": "quest-valley-survey",
+        "lines": [
+          "Magnificent work! These coordinates will guide every explorer who visits Oakhollow after us.",
+          "Take this Oakhollow Chronicler Seal, 90 XP, and 40 coins—may your stamina never falter!"
+        ],
+        "nextNodeId": null
+      },
+      "farewell": {
+        "id": "farewell",
+        "lines": ["May your boots hold true on every trail!"],
+        "nextNodeId": null
+      }
+    }
+  },
+
+  "npc-clara": {
+    "npcId": "npc-clara",
+    "defaultStartNodeId": "greet_day",
+    "entryRules": [
+      {
+        "condition": { "periodIn": ["evening", "night"] },
+        "nodeId": "greet_evening"
+      }
+    ],
+    "nodes": {
+      "greet_day": {
+        "id": "greet_day",
+        "lines": [
+          "Hello there! I'm checking the square flower boxes while the sunlight is warm.",
+          "Oakhollow stays lush all year round thanks to the valley streams."
+        ],
+        "choices": [
+          {
+            "id": "ask-help-village",
+            "label": "Does anyone in Oakhollow need a helping hand?",
+            "nextNodeId": "help_village_lead",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-help-village",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-herbs",
+            "label": "Any tips for finding Meadow Herbs?",
+            "nextNodeId": "herbs_tip"
+          },
+          {
+            "id": "ask-well",
+            "label": "What's special about the village well?",
+            "nextNodeId": "well_tip"
+          },
+          {
+            "id": "bye",
+            "label": "Thanks, Clara!",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "greet_evening": {
+        "id": "greet_evening",
+        "lines": [
+          "Can you smell the salt breeze drifting north from the coastline?",
+          "Evening is my favorite time to walk around the square before heading to my cottage."
+        ],
+        "choices": [
+          {
+            "id": "ask-help-village",
+            "label": "Does anyone in Oakhollow need help right now?",
+            "nextNodeId": "help_village_lead",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-help-village",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-herbs",
+            "label": "Where do Meadow Herbs grow?",
+            "nextNodeId": "herbs_tip"
+          },
+          {
+            "id": "ask-well",
+            "label": "Tell me about the stone well.",
+            "nextNodeId": "well_tip"
+          },
+          {
+            "id": "bye",
+            "label": "Have a lovely evening!",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "help_village_lead": {
+        "id": "help_village_lead",
+        "questId": "quest-help-village",
+        "lines": [
+          "Yes! Rowan, our village elder over by the square, mentioned the hall is running low on dried Meadow Herbs.",
+          "Speak with Rowan first, then gather 5 Meadow Herbs across the valley and return to him—there's 100 XP and 50 coins waiting!"
+        ],
+        "choices": [
+          {
+            "id": "accept-help-lead",
+            "label": "I'll help the village—I'll talk to Rowan right away.",
+            "nextNodeId": "help_village_started",
+            "questTag": "accept",
+            "effects": [
+              { "type": "startQuest", "questId": "quest-help-village" },
+              {
+                "type": "notice",
+                "message": "Quest Accepted: Help the Village (Talk to Rowan)."
+              }
+            ]
+          },
+          {
+            "id": "decline-help-lead",
+            "label": "Maybe later, Clara.",
+            "nextNodeId": "hub"
+          }
+        ]
+      },
+      "help_village_started": {
+        "id": "help_village_started",
+        "questId": "quest-help-village",
+        "lines": [
+          "Wonderful! Look for Rowan strolling near the stone well or notice board in Oakhollow Square.",
+          "He'll tell you everything you need once you introduce yourself."
+        ],
+        "nextNodeId": null
+      },
+      "hub": {
+        "id": "hub",
+        "lines": ["Was there anything else you wanted to ask about the valley flora?"],
+        "choices": [
+          {
+            "id": "ask-help-village",
+            "label": "Does anyone in Oakhollow need help right now?",
+            "nextNodeId": "help_village_lead",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-help-village",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-herbs",
+            "label": "Where do Meadow Herbs grow?",
+            "nextNodeId": "herbs_tip"
+          },
+          {
+            "id": "ask-well",
+            "label": "What does the village well do?",
+            "nextNodeId": "well_tip"
+          },
+          {
+            "id": "bye",
+            "label": "That's all for now.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "herbs_tip": {
+        "id": "herbs_tip",
+        "lines": [
+          "Look for bright golden blossoms tucked near oak groves, plains ridges, and forest glades.",
+          "Gathering a bundle heals a bit right away and adds spare Meadow Herbs to your Explorer Pack!"
+        ],
+        "nextNodeId": "hub"
+      },
+      "well_tip": {
+        "id": "well_tip",
+        "lines": [
+          "The well draws clear spring water straight from deep beneath the northern peaks.",
+          "Press E beside the stone rim whenever you need a quick boost to health and stamina."
+        ],
+        "nextNodeId": "hub"
+      },
+      "farewell": {
+        "id": "farewell",
+        "lines": ["Happy foraging out there!"],
+        "nextNodeId": null
+      }
+    }
+  },
+
+  "npc-lyra": {
+    "npcId": "npc-lyra",
+    "defaultStartNodeId": "greet_day",
+    "entryRules": [
+      {
+        "condition": {
+          "questId": "quest-herbalist-tonic",
+          "questStatusIn": ["ready"]
+        },
+        "nodeId": "tonic_ready"
+      },
+      {
+        "condition": {
+          "questId": "quest-herbalist-tonic",
+          "questStatusIn": ["completed"]
+        },
+        "nodeId": "greet_completed"
+      },
+      {
+        "condition": {
+          "periodIn": ["evening", "night"]
+        },
+        "nodeId": "greet_evening"
+      }
+    ],
+    "nodes": {
+      "greet_day": {
+        "id": "greet_day",
+        "lines": [
+          "Welcome to Willow Apothecary! Watch your step around the drying racks.",
+          "Between alpine sage and wild meadow herbs, there's always a fresh tonic simmering."
+        ],
+        "choices": [
+          {
+            "id": "ask-tonic-quest",
+            "label": "Need any herbs gathered from the wilds?",
+            "nextNodeId": "tonic_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-herbalist-tonic",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "check-tonic-progress",
+            "label": "About those Meadow Herbs you asked for...",
+            "nextNodeId": "tonic_progress",
+            "questTag": "progress",
+            "condition": {
+              "questId": "quest-herbalist-tonic",
+              "questStatusIn": ["active"]
+            }
+          },
+          {
+            "id": "ask-remedies",
+            "label": "How do healing herbs work in my pack?",
+            "nextNodeId": "remedies_info"
+          },
+          {
+            "id": "ask-flora",
+            "label": "Where do Meadow Herbs grow?",
+            "nextNodeId": "flora_regions"
+          },
+          {
+            "id": "bye",
+            "label": "See you later, Lyra.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "greet_evening": {
+        "id": "greet_evening",
+        "lines": [
+          "Sorting glass vials under the lantern light—quietest part of the day at Willow Apothecary.",
+          "If you're venturing out past dusk, make sure you keep herbs handy in your pack."
+        ],
+        "choices": [
+          {
+            "id": "ask-tonic-quest",
+            "label": "Need any herbs gathered for your remedies?",
+            "nextNodeId": "tonic_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-herbalist-tonic",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "check-tonic-progress",
+            "label": "About the Herbalist's Remedy...",
+            "nextNodeId": "tonic_progress",
+            "questTag": "progress",
+            "condition": {
+              "questId": "quest-herbalist-tonic",
+              "questStatusIn": ["active"]
+            }
+          },
+          {
+            "id": "ask-remedies",
+            "label": "How do remedies work?",
+            "nextNodeId": "remedies_info"
+          },
+          {
+            "id": "bye",
+            "label": "Goodnight, Lyra.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "greet_completed": {
+        "id": "greet_completed",
+        "lines": [
+          "That Meadow Herb batch brewed cleanly—I still have a spare shelf of remedies cooling!",
+          "Keep that Apothecary Vitality Tonic close whenever you tackle the northern cliffs."
+        ],
+        "choices": [
+          {
+            "id": "ask-remedies",
+            "label": "Remind me how to use apothecary items.",
+            "nextNodeId": "remedies_info"
+          },
+          {
+            "id": "ask-flora",
+            "label": "Where else do rare plants grow?",
+            "nextNodeId": "flora_regions"
+          },
+          {
+            "id": "bye",
+            "label": "Stay well, Lyra.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "hub": {
+        "id": "hub",
+        "lines": ["Need anything else from Willow Apothecary?"],
+        "choices": [
+          {
+            "id": "ask-tonic-quest",
+            "label": "Do you still need Meadow Herbs?",
+            "nextNodeId": "tonic_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-herbalist-tonic",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-remedies",
+            "label": "How do healing herbs work?",
+            "nextNodeId": "remedies_info"
+          },
+          {
+            "id": "ask-flora",
+            "label": "Where do Meadow Herbs grow?",
+            "nextNodeId": "flora_regions"
+          },
+          {
+            "id": "bye",
+            "label": "Thanks, Lyra.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "remedies_info": {
+        "id": "remedies_info",
+        "lines": [
+          "Open your Explorer Pack with I (or the Pack button on touch screens) to view your gathered bundles.",
+          "Selecting Use on a Meadow Herb or Vitality Tonic restores health right away on the trail."
+        ],
+        "nextNodeId": "hub"
+      },
+      "flora_regions": {
+        "id": "flora_regions",
+        "lines": [
+          "Look for golden blossoms nestled beside forest oaks and sunlit plains clearings.",
+          "Across the eastern ridge the climate turns dry, so cacti replace soft woodland flora."
+        ],
+        "nextNodeId": "hub"
+      },
+      "tonic_offer": {
+        "id": "tonic_offer",
+        "questId": "quest-herbalist-tonic",
+        "lines": [
+          "Actually, yes! My stock of golden Meadow Herbs ran low after the last caravan passed through.",
+          "Bring me 2 Meadow Herbs in your pack and I'll brew a potent Apothecary Vitality Tonic for your travels."
+        ],
+        "choices": [
+          {
+            "id": "accept-tonic",
+            "label": "Count on me—I'll gather 2 Meadow Herbs.",
+            "nextNodeId": "tonic_accepted",
+            "questTag": "accept",
+            "effects": [
+              { "type": "startQuest", "questId": "quest-herbalist-tonic" },
+              {
+                "type": "notice",
+                "message": "Quest Accepted: Herbalist's Remedy (Gather 2 Meadow Herbs)."
+              }
+            ]
+          },
+          {
+            "id": "decline-tonic",
+            "label": "Maybe once I'm back from exploring.",
+            "nextNodeId": "hub"
+          }
+        ]
+      },
+      "tonic_accepted": {
+        "id": "tonic_accepted",
+        "questId": "quest-herbalist-tonic",
+        "lines": [
+          "Thank you kindly! Spot the glowing golden herb clusters in grassy clearings and press E to gather them.",
+          "Return with 2 bundles in your pack whenever you're ready."
+        ],
+        "nextNodeId": null
+      },
+      "tonic_progress": {
+        "id": "tonic_progress",
+        "questId": "quest-herbalist-tonic",
+        "lines": [
+          "I need 2 Meadow Herbs in your Explorer Pack before I can distill the vitality tonic.",
+          "Check the forest clearings west of Oakhollow—there are plenty sprouting along the grass!"
+        ],
+        "nextNodeId": "hub"
+      },
+      "tonic_ready": {
+        "id": "tonic_ready",
+        "questId": "quest-herbalist-tonic",
+        "lines": [
+          "Oh, wonderful! I can smell fresh Meadow Herbs in your pack from here.",
+          "Shall I brew two bundles into a concentrated Apothecary Vitality Tonic for you?"
+        ],
+        "choices": [
+          {
+            "id": "complete-tonic",
+            "label": "Hand over 2 Meadow Herbs and brew the tonic.",
+            "nextNodeId": "tonic_completed",
+            "questTag": "complete",
+            "effects": [
+              { "type": "completeQuest", "questId": "quest-herbalist-tonic" }
+            ]
+          },
+          {
+            "id": "keep-herbs",
+            "label": "Hold on—I want to ask something else first.",
+            "nextNodeId": "hub"
+          }
+        ]
+      },
+      "tonic_completed": {
+        "id": "tonic_completed",
+        "questId": "quest-herbalist-tonic",
+        "lines": [
+          "There—deep emerald clarity! One sip from that vial will patch wounds and restore your stride in seconds.",
+          "You'll find the Apothecary Vitality Tonic tucked safely inside your Explorer Pack, along with 75 XP and 30 coins."
+        ],
+        "nextNodeId": null
+      },
+      "farewell": {
+        "id": "farewell",
+        "lines": ["Stay healthy out on the valley trails!"],
+        "nextNodeId": null
+      }
+    }
+  },
+
+  "npc-toby": {
+    "npcId": "npc-toby",
+    "defaultStartNodeId": "greet_morning",
+    "entryRules": [
+      {
+        "condition": {
+          "questId": "quest-bakery-delivery",
+          "questStatusIn": ["active", "ready"]
+        },
+        "nodeId": "greet_in_progress"
+      },
+      {
+        "condition": {
+          "questId": "quest-bakery-delivery",
+          "questStatusIn": ["completed"]
+        },
+        "nodeId": "greet_completed"
+      },
+      {
+        "condition": {
+          "periodIn": ["evening", "night"]
+        },
+        "nodeId": "greet_evening"
+      }
+    ],
+    "nodes": {
+      "greet_morning": {
+        "id": "greet_morning",
+        "lines": [
+          "Morning! Dew on the wheat stalks always promises a hearty harvest.",
+          "Between Maren's orchard greens and these grain beds, Oakhollow never goes hungry."
+        ],
+        "choices": [
+          {
+            "id": "ask-delivery",
+            "label": "Need a hand hauling wheat up to the village?",
+            "nextNodeId": "delivery_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-bakery-delivery",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-crops",
+            "label": "How are the crops growing?",
+            "nextNodeId": "crops_info"
+          },
+          {
+            "id": "ask-scarecrow",
+            "label": "Does that scarecrow actually keep crows away?",
+            "nextNodeId": "scarecrow_story"
+          },
+          {
+            "id": "bye",
+            "label": "Keep up the good work, Toby.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "greet_evening": {
+        "id": "greet_evening",
+        "lines": [
+          "Checking the fence rails before sunset—a loose post invites wandering goats straight into the wheat!",
+          "Still plenty to tidy up before hanging my straw hat for the night."
+        ],
+        "choices": [
+          {
+            "id": "ask-delivery",
+            "label": "Need a sack of wheat carried to Bram?",
+            "nextNodeId": "delivery_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-bakery-delivery",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-crops",
+            "label": "How are the crops growing?",
+            "nextNodeId": "crops_info"
+          },
+          {
+            "id": "bye",
+            "label": "Have a good evening, Toby.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "greet_in_progress": {
+        "id": "greet_in_progress",
+        "questId": "quest-bakery-delivery",
+        "lines": [
+          "Take that Fresh Wheat Sack straight up the farm lane to Bram at Sunstone Bakery!",
+          "His stall sits on the northwest side of Oakhollow Square—hard to miss the warm awning."
+        ],
+        "choices": [
+          {
+            "id": "ask-crops",
+            "label": "How are the rest of the crops doing?",
+            "nextNodeId": "crops_info"
+          },
+          {
+            "id": "bye",
+            "label": "I'll deliver the wheat to Bram.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "greet_completed": {
+        "id": "greet_completed",
+        "lines": [
+          "Bram sent word down the lane that your wheat delivery hit the ovens right on time!",
+          "Nothing matches fresh hearth bread after a morning in the fields."
+        ],
+        "choices": [
+          {
+            "id": "ask-crops",
+            "label": "How are the crops growing?",
+            "nextNodeId": "crops_info"
+          },
+          {
+            "id": "ask-scarecrow",
+            "label": "How's the scarecrow holding up?",
+            "nextNodeId": "scarecrow_story"
+          },
+          {
+            "id": "bye",
+            "label": "See you around, Toby.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "hub": {
+        "id": "hub",
+        "lines": ["Anything else on your mind around the farmstead?"],
+        "choices": [
+          {
+            "id": "ask-delivery",
+            "label": "Need help taking grain to Bram?",
+            "nextNodeId": "delivery_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-bakery-delivery",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-crops",
+            "label": "How are the crops growing?",
+            "nextNodeId": "crops_info"
+          },
+          {
+            "id": "ask-scarecrow",
+            "label": "Tell me about the scarecrow.",
+            "nextNodeId": "scarecrow_story"
+          },
+          {
+            "id": "bye",
+            "label": "Catch you later, Toby.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "crops_info": {
+        "id": "crops_info",
+        "lines": [
+          "Oakhollow soil stays fertile thanks to groundwater trickling down from the valley springs.",
+          "Our wheat stalks turn golden by noon, and the leafy greens beside the barn grow twice as fast."
+        ],
+        "nextNodeId": "hub"
+      },
+      "scarecrow_story": {
+        "id": "scarecrow_story",
+        "lines": [
+          "Maren stitched that old wool coat together last autumn after three bold crows tried nesting in the grain cart.",
+          "So far it's fooled every bird in the valley—and startled a couple of sleepy travelers at twilight too!"
+        ],
+        "nextNodeId": "hub"
+      },
+      "delivery_offer": {
+        "id": "delivery_offer",
+        "questId": "quest-bakery-delivery",
+        "lines": [
+          "As a matter of fact, yes! Bram's ovens at Sunstone Bakery are nearly out of stone-ground flour.",
+          "Would you carry this Fresh Wheat Sack up to Bram in the village square? I reckon he'll bake you a warm loaf in return!"
+        ],
+        "choices": [
+          {
+            "id": "accept-delivery",
+            "label": "Sure—I'll bring the wheat sack to Bram.",
+            "nextNodeId": "delivery_accepted",
+            "questTag": "accept",
+            "effects": [
+              { "type": "startQuest", "questId": "quest-bakery-delivery" },
+              {
+                "type": "giveItem",
+                "item": {
+                  "id": "farm-grain",
+                  "name": "Fresh Wheat Sack",
+                  "description": "Stone-ground Oakhollow wheat from Toby, bound for Bram at Sunstone Bakery.",
+                  "count": 1,
+                  "usable": false
+                }
+              },
+              {
+                "type": "notice",
+                "message": "Quest Accepted: Grain for the Hearth (Deliver Fresh Wheat Sack to Bram)."
+              }
+            ]
+          },
+          {
+            "id": "decline-delivery",
+            "label": "Maybe later—my pack is full right now.",
+            "nextNodeId": "hub"
+          }
+        ]
+      },
+      "delivery_accepted": {
+        "id": "delivery_accepted",
+        "questId": "quest-bakery-delivery",
+        "lines": [
+          "Much obliged! I tucked the Fresh Wheat Sack safely into your Explorer Pack.",
+          "Follow the dirt lane northwest into Oakhollow Square and hand it straight to Bram."
+        ],
+        "nextNodeId": null
+      },
+      "farewell": {
+        "id": "farewell",
+        "lines": ["Much obliged, friend!"],
+        "nextNodeId": null
+      }
+    }
+  },
+
+  "npc-bram": {
+    "npcId": "npc-bram",
+    "defaultStartNodeId": "greet_day",
+    "entryRules": [
+      {
+        "condition": {
+          "questId": "quest-bakery-delivery",
+          "questStatusIn": ["active", "ready"],
+          "hasItem": { "itemId": "farm-grain", "minCount": 1 }
+        },
+        "nodeId": "grain_delivery_ready"
+      },
+      {
+        "condition": {
+          "periodIn": ["evening", "night"]
+        },
+        "nodeId": "greet_evening"
+      }
+    ],
+    "nodes": {
+      "greet_day": {
+        "id": "greet_day",
+        "lines": [
+          "Fresh hearth loaves just came off the stone! Step right up to Sunstone Bakery.",
+          "Nothing fuels an explorer across mountain passes like crusty sourdough."
+        ],
+        "choices": [
+          {
+            "id": "ask-goods",
+            "label": "What do you bake here?",
+            "nextNodeId": "baked_goods"
+          },
+          {
+            "id": "ask-grain",
+            "label": "Where does your flour come from?",
+            "nextNodeId": "bread_secret"
+          },
+          {
+            "id": "bye",
+            "label": "Smells delicious, Bram.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "greet_evening": {
+        "id": "greet_evening",
+        "lines": [
+          "Banking the oven embers down for the evening—finally time to catch the cool square breeze.",
+          "First batch goes into the hearth before dawn!"
+        ],
+        "choices": [
+          {
+            "id": "ask-goods",
+            "label": "What do you bake at Sunstone Bakery?",
+            "nextNodeId": "baked_goods"
+          },
+          {
+            "id": "ask-grain",
+            "label": "Where do you get your grain?",
+            "nextNodeId": "bread_secret"
+          },
+          {
+            "id": "bye",
+            "label": "Rest well, Bram.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "hub": {
+        "id": "hub",
+        "lines": ["Anything else I can tell you from behind the counter?"],
+        "choices": [
+          {
+            "id": "ask-goods",
+            "label": "What do you bake here?",
+            "nextNodeId": "baked_goods"
+          },
+          {
+            "id": "ask-grain",
+            "label": "Where does your grain come from?",
+            "nextNodeId": "bread_secret"
+          },
+          {
+            "id": "bye",
+            "label": "See you later, Bram.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "baked_goods": {
+        "id": "baked_goods",
+        "lines": [
+          "Round country sourdough loaves, spiced oatcakes, and honeyed hearth rolls crisp on the outside.",
+          "Alden and Sera always swing by for warm crusts before starting their night watch."
+        ],
+        "nextNodeId": "hub"
+      },
+      "bread_secret": {
+        "id": "bread_secret",
+        "lines": [
+          "Every grain sack is harvested by Toby and Maren right down the southeastern farm lane.",
+          "Stone-milled fresh each week—that's what gives Oakhollow bread its nutty aroma."
+        ],
+        "nextNodeId": "hub"
+      },
+      "grain_delivery_ready": {
+        "id": "grain_delivery_ready",
+        "questId": "quest-bakery-delivery",
+        "lines": [
+          "Aha! Is that a Fresh Wheat Sack from Toby's farmstead slung over your shoulder?",
+          "My flour bin was scraping the floorboards—you arrived at the exact right moment!"
+        ],
+        "choices": [
+          {
+            "id": "deliver-grain",
+            "label": "Hand over the Fresh Wheat Sack.",
+            "nextNodeId": "grain_delivered",
+            "questTag": "complete",
+            "effects": [
+              { "type": "completeQuest", "questId": "quest-bakery-delivery" }
+            ]
+          },
+          {
+            "id": "chat-first",
+            "label": "Let's talk first before unpacking.",
+            "nextNodeId": "hub"
+          }
+        ]
+      },
+      "grain_delivered": {
+        "id": "grain_delivered",
+        "questId": "quest-bakery-delivery",
+        "lines": [
+          "Top-grade wheat, dry and golden! Tomorrow's sourdough rounds are saved.",
+          "Take this warm Sunstone Hearth Loaf, 60 XP, and 25 coins for your pack!"
+        ],
+        "nextNodeId": null
+      },
+      "farewell": {
+        "id": "farewell",
+        "lines": ["Come back anytime the hearth is lit!"],
+        "nextNodeId": null
+      }
+    }
+  },
+
+  "npc-garrick": {
+    "npcId": "npc-garrick",
+    "defaultStartNodeId": "greet_day",
+    "entryRules": [
+      {
+        "condition": {
+          "questId": "quest-desert-expedition",
+          "questStatusIn": ["ready"]
+        },
+        "nodeId": "desert_ready"
+      },
+      {
+        "condition": {
+          "questId": "quest-the-merchant",
+          "questStatusIn": ["ready"]
+        },
+        "nodeId": "caravan_ready"
+      },
+      {
+        "condition": {
+          "periodIn": ["evening", "night"]
+        },
+        "nodeId": "greet_evening"
+      }
+    ],
+    "nodes": {
+      "greet_day": {
+        "id": "greet_day",
+        "lines": [
+          "Checking lantern oil, rope coils, and pack straps at Valley Tool & Goods.",
+          "If you're planning an expedition beyond the village roads, prepare before you climb."
+        ],
+        "choices": [
+          {
+            "id": "ask-desert-quest",
+            "label": "Any expeditions you need scouted?",
+            "nextNodeId": "desert_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-desert-expedition",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-desert-progress",
+            "label": "About the Sunstone Desert expedition...",
+            "nextNodeId": "desert_progress",
+            "questTag": "progress",
+            "condition": {
+              "questId": "quest-desert-expedition",
+              "questStatusIn": ["active"]
+            }
+          },
+          {
+            "id": "ask-caravan-quest",
+            "label": "Do your trade wagons need supplies?",
+            "nextNodeId": "caravan_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-the-merchant",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-caravan-progress",
+            "label": "About the caravan timber delivery...",
+            "nextNodeId": "caravan_progress",
+            "questTag": "progress",
+            "condition": {
+              "questId": "quest-the-merchant",
+              "questStatusIn": ["active"]
+            }
+          },
+          {
+            "id": "ask-gear",
+            "label": "Any advice for long journeys?",
+            "nextNodeId": "travel_advice"
+          },
+          {
+            "id": "ask-mountains",
+            "label": "What's it like up in the northern mountains?",
+            "nextNodeId": "mountain_advice"
+          },
+          {
+            "id": "bye",
+            "label": "Good advice, Garrick.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "greet_evening": {
+        "id": "greet_evening",
+        "lines": [
+          "Locking up the supply crates for the night—another busy day outfitting explorers.",
+          "Drop by the shopfront tomorrow if you ever need trail pointers."
+        ],
+        "choices": [
+          {
+            "id": "ask-desert-quest",
+            "label": "Any expeditions you need scouted?",
+            "nextNodeId": "desert_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-desert-expedition",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-desert-progress",
+            "label": "About the Sunstone Desert expedition...",
+            "nextNodeId": "desert_progress",
+            "questTag": "progress",
+            "condition": {
+              "questId": "quest-desert-expedition",
+              "questStatusIn": ["active"]
+            }
+          },
+          {
+            "id": "ask-gear",
+            "label": "Any advice for long journeys?",
+            "nextNodeId": "travel_advice"
+          },
+          {
+            "id": "bye",
+            "label": "See you tomorrow, Garrick.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "desert_offer": {
+        "id": "desert_offer",
+        "questId": "quest-desert-expedition",
+        "lines": [
+          "I need up-to-date sand conditions from the eastern Sunstone Desert before next week's supply wagon departs.",
+          "Cross east until your compass reads Desert, explore the dunes, and report back to me for 80 XP and 45 coins!"
+        ],
+        "choices": [
+          {
+            "id": "accept-desert",
+            "label": "I'll explore the Sunstone Desert and report back.",
+            "nextNodeId": "desert_accepted",
+            "questTag": "accept",
+            "effects": [
+              { "type": "startQuest", "questId": "quest-desert-expedition" },
+              {
+                "type": "notice",
+                "message": "Quest Accepted: Dunes of Sunstone (Explore Desert region)."
+              }
+            ]
+          },
+          {
+            "id": "decline-desert",
+            "label": "Not right now, Garrick.",
+            "nextNodeId": "hub"
+          }
+        ]
+      },
+      "desert_accepted": {
+        "id": "desert_accepted",
+        "questId": "quest-desert-expedition",
+        "lines": [
+          "Head straight east past the farmstead until grassy plains give way to ochre sand dunes.",
+          "Once you've stepped into the Sunstone Desert, swing back by my stall!"
+        ],
+        "nextNodeId": null
+      },
+      "desert_progress": {
+        "id": "desert_progress",
+        "questId": "quest-desert-expedition",
+        "lines": [
+          "Keep heading east until you reach the Sunstone Desert biome—look for towering saguaro cacti and sandstone dunes.",
+          "Return once you've explored the sands."
+        ],
+        "nextNodeId": "hub"
+      },
+      "desert_ready": {
+        "id": "desert_ready",
+        "questId": "quest-desert-expedition",
+        "lines": [
+          "Sun-bleached boots! That means you made it all the way out to the Sunstone Desert dunes.",
+          "Ready to log your desert expedition report?"
+        ],
+        "choices": [
+          {
+            "id": "complete-desert",
+            "label": "Share your desert expedition notes.",
+            "nextNodeId": "desert_completed",
+            "questTag": "complete",
+            "effects": [
+              { "type": "completeQuest", "questId": "quest-desert-expedition" }
+            ]
+          },
+          {
+            "id": "chat-later",
+            "label": "Let's talk about gear first.",
+            "nextNodeId": "hub"
+          }
+        ]
+      },
+      "desert_completed": {
+        "id": "desert_completed",
+        "questId": "quest-desert-expedition",
+        "lines": [
+          "Firm sand past the ridge—just what our caravan drivers needed to hear!",
+          "Here is 80 XP and 45 coins for your trail work."
+        ],
+        "nextNodeId": null
+      },
+      "hub": {
+        "id": "hub",
+        "lines": ["Got another question about field gear or terrain?"],
+        "choices": [
+          {
+            "id": "ask-desert-quest",
+            "label": "Tell me about the desert expedition.",
+            "nextNodeId": "desert_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-desert-expedition",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-gear",
+            "label": "Any tips for managing stamina?",
+            "nextNodeId": "travel_advice"
+          },
+          {
+            "id": "ask-mountains",
+            "label": "What about the mountain ridges?",
+            "nextNodeId": "mountain_advice"
+          },
+          {
+            "id": "bye",
+            "label": "Thanks, Garrick.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "travel_advice": {
+        "id": "travel_advice",
+        "lines": [
+          "Don't burn your stamina sprinting uphill—ease off Shift for a moment and let your breath recover.",
+          "And keep checking your World Map with M; every signpost and cairn gives you a clearer bearing back to Oakhollow."
+        ],
+        "nextNodeId": "hub"
+      },
+      "mountain_advice": {
+        "id": "mountain_advice",
+        "lines": [
+          "Snow blankets the highest northern peaks, and steep cliffs will test your footing.",
+          "Follow gentler ridgelines up from the plains instead of charging straight at sheer rock faces."
+        ],
+        "nextNodeId": "hub"
+      },
+      "caravan_offer": {
+        "id": "caravan_offer",
+        "questId": "quest-the-merchant",
+        "lines": [
+          "Our eastern caravan wagons rattled a wheel axle loose on the road from Grandcross.",
+          "Harvest 8 sturdy Wood from forest trees or fallen branches and bring them here—I'll pay 110 XP, 75 coins, and 2 Hearty Roasts!"
+        ],
+        "choices": [
+          {
+            "id": "accept-caravan",
+            "label": "I'll gather 8 Wood for the caravan wagons.",
+            "nextNodeId": "caravan_accepted",
+            "questTag": "accept",
+            "effects": [
+              { "type": "startQuest", "questId": "quest-the-merchant" },
+              {
+                "type": "notice",
+                "message": "Quest Accepted: Timber for the Caravan (Deliver 8 Wood to Garrick)."
+              }
+            ]
+          },
+          {
+            "id": "decline-caravan",
+            "label": "Maybe later, Garrick.",
+            "nextNodeId": "hub"
+          }
+        ]
+      },
+      "caravan_accepted": {
+        "id": "caravan_accepted",
+        "questId": "quest-the-merchant",
+        "lines": [
+          "Much obliged! Chop marked timber trees or gather fallen branches around the woods and return with 8 Wood."
+        ],
+        "nextNodeId": null
+      },
+      "caravan_progress": {
+        "id": "caravan_progress",
+        "questId": "quest-the-merchant",
+        "lines": [
+          "I still need 8 Wood to brace the caravan axles—approach harvestable trees or fallen logs and press Interact."
+        ],
+        "nextNodeId": "hub"
+      },
+      "caravan_ready": {
+        "id": "caravan_ready",
+        "questId": "quest-the-merchant",
+        "lines": [
+          "Fine straight timber in your pack! Are those 8 Wood bundles ready for the caravan?"
+        ],
+        "choices": [
+          {
+            "id": "complete-caravan",
+            "label": "Hand over 8 Wood for the caravan.",
+            "nextNodeId": "caravan_completed",
+            "questTag": "complete",
+            "effects": [
+              { "type": "completeQuest", "questId": "quest-the-merchant" }
+            ]
+          },
+          {
+            "id": "chat-later",
+            "label": "Hold on, let's talk first.",
+            "nextNodeId": "hub"
+          }
+        ]
+      },
+      "caravan_completed": {
+        "id": "caravan_completed",
+        "questId": "quest-the-merchant",
+        "lines": [
+          "That will keep the Grandcross caravan rolling cleanly!",
+          "Here are your 75 coins, 110 XP, and two Hearty Roasts for the road."
+        ],
+        "nextNodeId": null
+      },
+      "farewell": {
+        "id": "farewell",
+        "lines": ["Travel smart, adventurer!"],
+        "nextNodeId": null
+      }
+    }
+  },
+
+  "npc-maren": {
+    "npcId": "npc-maren",
+    "defaultStartNodeId": "greet_day",
+    "entryRules": [
+      {
+        "condition": { "periodIn": ["evening", "night"] },
+        "nodeId": "greet_evening"
+      }
+    ],
+    "nodes": {
+      "greet_day": {
+        "id": "greet_day",
+        "lines": [
+          "Tending the orchard rows and leafy garden beds in the clear mountain air.",
+          "Toby handles the tall wheat while I keep the apple trees and greens thriving."
+        ],
+        "choices": [
+          {
+            "id": "ask-orchard",
+            "label": "What grows in the orchard?",
+            "nextNodeId": "orchard_info"
+          },
+          {
+            "id": "ask-market",
+            "label": "Do you sell produce in the square?",
+            "nextNodeId": "market_routine"
+          },
+          {
+            "id": "bye",
+            "label": "See you around, Maren.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "greet_evening": {
+        "id": "greet_evening",
+        "lines": [
+          "Pruning a few low orchard branches before twilight settles over the fence.",
+          "Soon I'll head back to the south-east cottage for a warm supper."
+        ],
+        "choices": [
+          {
+            "id": "ask-orchard",
+            "label": "What grows in the orchard?",
+            "nextNodeId": "orchard_info"
+          },
+          {
+            "id": "bye",
+            "label": "Enjoy your supper, Maren.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "hub": {
+        "id": "hub",
+        "lines": ["Anything else you'd like to know about the orchard?"],
+        "choices": [
+          {
+            "id": "ask-orchard",
+            "label": "What grows in the orchard?",
+            "nextNodeId": "orchard_info"
+          },
+          {
+            "id": "ask-market",
+            "label": "When do you bring greens to market?",
+            "nextNodeId": "market_routine"
+          },
+          {
+            "id": "bye",
+            "label": "Thanks, Maren.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "orchard_info": {
+        "id": "orchard_info",
+        "lines": [
+          "Crisp valley apples, sweet root greens, and hearty herbs border our farmstead fence.",
+          "Feel free to stroll along the wooden fences anytime—just mind the soil beds!"
+        ],
+        "nextNodeId": "hub"
+      },
+      "market_routine": {
+        "id": "market_routine",
+        "lines": [
+          "Around midday I haul fresh baskets up to Oakhollow Square so Bram and Lyra get first pick.",
+          "By evening I'm back east checking the fence latches."
+        ],
+        "nextNodeId": "hub"
+      },
+      "farewell": {
+        "id": "farewell",
+        "lines": ["Enjoy the sunshine, traveler!"],
+        "nextNodeId": null
+      }
+    }
+  },
+
+  "npc-alden": {
+    "npcId": "npc-alden",
+    "defaultStartNodeId": "greet_day",
+    "entryRules": [
+      {
+        "condition": {
+          "questId": "quest-ridge-scouting",
+          "questStatusIn": ["ready"]
+        },
+        "nodeId": "scout_ready"
+      },
+      {
+        "condition": {
+          "questId": "quest-into-the-wild",
+          "questStatusIn": ["ready"]
+        },
+        "nodeId": "mine_ready"
+      },
+      {
+        "condition": {
+          "periodIn": ["evening", "night"]
+        },
+        "nodeId": "greet_night"
+      }
+    ],
+    "nodes": {
+      "greet_day": {
+        "id": "greet_day",
+        "lines": [
+          "All clear along the southern approach, traveler.",
+          "Oakhollow stays peaceful, though we keep a steady watch over the main roads and northern trails."
+        ],
+        "choices": [
+          {
+            "id": "ask-scout-quest",
+            "label": "Need a scout to check the northern trails?",
+            "nextNodeId": "scout_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-ridge-scouting",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-scout-progress",
+            "label": "About the Highland Pass signpost check...",
+            "nextNodeId": "scout_progress",
+            "questTag": "progress",
+            "condition": {
+              "questId": "quest-ridge-scouting",
+              "questStatusIn": ["active"]
+            }
+          },
+          {
+            "id": "ask-mine-quest",
+            "label": "Have travelers spotted ruins or old mines out far?",
+            "nextNodeId": "mine_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-into-the-wild",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-mine-progress",
+            "label": "About the Sunstone Mine expedition...",
+            "nextNodeId": "mine_progress",
+            "questTag": "progress",
+            "condition": {
+              "questId": "quest-into-the-wild",
+              "questStatusIn": ["active"]
+            }
+          },
+          {
+            "id": "ask-roads",
+            "label": "Are the surrounding roads safe?",
+            "nextNodeId": "road_safety"
+          },
+          {
+            "id": "ask-watch",
+            "label": "What route do you patrol?",
+            "nextNodeId": "patrol_route"
+          },
+          {
+            "id": "bye",
+            "label": "Carry on, Warden.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "greet_night": {
+        "id": "greet_night",
+        "lines": [
+          "Lanterns are glowing nicely along the square—quiet watch tonight.",
+          "Keep to the road markers if you travel after dark."
+        ],
+        "choices": [
+          {
+            "id": "ask-scout-quest",
+            "label": "Need anyone to scout the Highland Pass?",
+            "nextNodeId": "scout_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-ridge-scouting",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-scout-progress",
+            "label": "About the Highland Pass signpost check...",
+            "nextNodeId": "scout_progress",
+            "questTag": "progress",
+            "condition": {
+              "questId": "quest-ridge-scouting",
+              "questStatusIn": ["active"]
+            }
+          },
+          {
+            "id": "ask-roads",
+            "label": "Any hazards beyond the village?",
+            "nextNodeId": "road_safety"
+          },
+          {
+            "id": "bye",
+            "label": "Stay alert, Warden.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "scout_offer": {
+        "id": "scout_offer",
+        "questId": "quest-ridge-scouting",
+        "lines": [
+          "With Sera and me covering the village square, nobody has walked up to check the Highland Pass Signpost north of Oakhollow since Tuesday.",
+          "Head north into the mountain foothills until you reach the Highland Pass Signpost, then report back to me for 85 XP and 35 coins!"
+        ],
+        "choices": [
+          {
+            "id": "accept-scout",
+            "label": "I'll scout the Highland Pass Signpost for you.",
+            "nextNodeId": "scout_accepted",
+            "questTag": "accept",
+            "effects": [
+              { "type": "startQuest", "questId": "quest-ridge-scouting" },
+              {
+                "type": "notice",
+                "message": "Quest Accepted: Northern Ridge Scout (Reach Highland Pass Signpost)."
+              }
+            ]
+          },
+          {
+            "id": "decline-scout",
+            "label": "Maybe later, Warden.",
+            "nextNodeId": "hub"
+          }
+        ]
+      },
+      "scout_accepted": {
+        "id": "scout_accepted",
+        "questId": "quest-ridge-scouting",
+        "lines": [
+          "Much appreciated! Follow the plains north past Oakhollow until the rocky foothills begin near Z -138.",
+          "Return and report as soon as you've checked the signpost."
+        ],
+        "nextNodeId": null
+      },
+      "scout_progress": {
+        "id": "scout_progress",
+        "questId": "quest-ridge-scouting",
+        "lines": [
+          "The Highland Pass Signpost stands due north of Oakhollow around X 10, Z -138.",
+          "Walk up to the trailhead and report back once you've verified the path is clear."
+        ],
+        "nextNodeId": "hub"
+      },
+      "scout_ready": {
+        "id": "scout_ready",
+        "questId": "quest-ridge-scouting",
+        "lines": [
+          "Good timing! Did you make it up to the Highland Pass Signpost?",
+          "Are the mountain trail markers still standing clear of rockslides?"
+        ],
+        "choices": [
+          {
+            "id": "complete-scout",
+            "label": "Report that the Highland Pass trail is clear.",
+            "nextNodeId": "scout_completed",
+            "questTag": "complete",
+            "effects": [
+              { "type": "completeQuest", "questId": "quest-ridge-scouting" }
+            ]
+          },
+          {
+            "id": "talk-else",
+            "label": "Hold on—I had another question first.",
+            "nextNodeId": "hub"
+          }
+        ]
+      },
+      "scout_completed": {
+        "id": "scout_completed",
+        "questId": "quest-ridge-scouting",
+        "lines": [
+          "That puts my mind at ease! Travelers can take the northern pass safely.",
+          "Here is 85 XP and 35 coins from the Oakhollow watch stipend!"
+        ],
+        "nextNodeId": null
+      },
+      "hub": {
+        "id": "hub",
+        "lines": ["Need another bearing from the watch post?"],
+        "choices": [
+          {
+            "id": "ask-scout-quest",
+            "label": "Tell me about the Highland Pass scouting task.",
+            "nextNodeId": "scout_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-ridge-scouting",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-roads",
+            "label": "Are the roads safe?",
+            "nextNodeId": "road_safety"
+          },
+          {
+            "id": "ask-watch",
+            "label": "What route do you patrol?",
+            "nextNodeId": "patrol_route"
+          },
+          {
+            "id": "bye",
+            "label": "Thanks, Alden.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "road_safety": {
+        "id": "road_safety",
+        "lines": [
+          "Completely peaceful around the village. Your biggest risks out here are steep cliffs up north and deep river currents to the west.",
+          "Take a breath at the stone well if you ever feel worn down after a long trek."
+        ],
+        "nextNodeId": "hub"
+      },
+      "patrol_route": {
+        "id": "patrol_route",
+        "lines": [
+          "I walk the southern approach in the morning, sweep the east-west village road at midday, and stand night watch by the gate signpost.",
+          "Sera covers the central market square so nothing slips past us."
+        ],
+        "nextNodeId": "hub"
+      },
+      "mine_offer": {
+        "id": "mine_offer",
+        "questId": "quest-into-the-wild",
+        "lines": [
+          "Miners reported rich iron veins and old lantern shafts at Sunstone Mine far to the northeast around (X 840, Z -330).",
+          "Scout the entrance of Sunstone Mine and report back for 160 XP and 95 coins!"
+        ],
+        "choices": [
+          {
+            "id": "accept-mine",
+            "label": "I'll inspect Sunstone Mine for the watch.",
+            "nextNodeId": "mine_accepted",
+            "questTag": "accept",
+            "effects": [
+              { "type": "startQuest", "questId": "quest-into-the-wild" },
+              {
+                "type": "notice",
+                "message": "Quest Accepted: Into the Wild Mines (Discover Sunstone Mine)."
+              }
+            ]
+          },
+          {
+            "id": "decline-mine",
+            "label": "Too far for me right now.",
+            "nextNodeId": "hub"
+          }
+        ]
+      },
+      "mine_accepted": {
+        "id": "mine_accepted",
+        "questId": "quest-into-the-wild",
+        "lines": [
+          "Check your map for the rocky northeast hills. Look for timber beams and glowing camp lanterns outside Sunstone Mine!"
+        ],
+        "nextNodeId": null
+      },
+      "mine_progress": {
+        "id": "mine_progress",
+        "questId": "quest-into-the-wild",
+        "lines": [
+          "Sunstone Mine lies northeast of Oakhollow near (X 840, Z -330). Bring a sturdy blade and report back once you reach it."
+        ],
+        "nextNodeId": "hub"
+      },
+      "mine_ready": {
+        "id": "mine_ready",
+        "questId": "quest-into-the-wild",
+        "lines": [
+          "You made it all the way to Sunstone Mine and back! Are the shafts intact?"
+        ],
+        "choices": [
+          {
+            "id": "complete-mine",
+            "label": "Report the Sunstone Mine survey.",
+            "nextNodeId": "mine_completed",
+            "questTag": "complete",
+            "effects": [
+              { "type": "completeQuest", "questId": "quest-into-the-wild" }
+            ]
+          },
+          {
+            "id": "talk-else",
+            "label": "Wait, let's chat a moment.",
+            "nextNodeId": "hub"
+          }
+        ]
+      },
+      "mine_completed": {
+        "id": "mine_completed",
+        "questId": "quest-into-the-wild",
+        "lines": [
+          "Outstanding range work! Our blacksmiths will be thrilled to hear iron seams are open again.",
+          "Take 160 XP and 95 coins from the Frontier Watch chest."
+        ],
+        "nextNodeId": null
+      },
+      "farewell": {
+        "id": "farewell",
+        "lines": ["Safe travels along the valley roads!"],
+        "nextNodeId": null
+      }
+    }
+  },
+
+  "npc-sera": {
+    "npcId": "npc-sera",
+    "defaultStartNodeId": "greet_day",
+    "entryRules": [
+      {
+        "condition": { "periodIn": ["evening", "night"] },
+        "nodeId": "greet_evening"
+      }
+    ],
+    "nodes": {
+      "greet_day": {
+        "id": "greet_day",
+        "lines": [
+          "Making the rounds around Oakhollow Square—steady foot traffic today!",
+          "Between the bakery, apothecary, and well, this plaza is the heart of the valley."
+        ],
+        "choices": [
+          {
+            "id": "ask-square",
+            "label": "What goes on in the square during the day?",
+            "nextNodeId": "square_life"
+          },
+          {
+            "id": "ask-neighbors",
+            "label": "Who should I talk to around here?",
+            "nextNodeId": "neighbor_tips"
+          },
+          {
+            "id": "bye",
+            "label": "Thanks, Sera.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "greet_evening": {
+        "id": "greet_evening",
+        "lines": [
+          "Doing twilight rounds beneath the street lamps—peaceful night across Oakhollow.",
+          "Let Alden or me know if you ever need directions."
+        ],
+        "choices": [
+          {
+            "id": "ask-square",
+            "label": "Tell me about the daily routine here.",
+            "nextNodeId": "square_life"
+          },
+          {
+            "id": "ask-neighbors",
+            "label": "Who has errands I could help with?",
+            "nextNodeId": "neighbor_tips"
+          },
+          {
+            "id": "bye",
+            "label": "Have a quiet watch, Sera.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "hub": {
+        "id": "hub",
+        "lines": ["Anything else I can point out around the square?"],
+        "choices": [
+          {
+            "id": "ask-square",
+            "label": "What goes on in the square?",
+            "nextNodeId": "square_life"
+          },
+          {
+            "id": "ask-neighbors",
+            "label": "Who might need a helping hand?",
+            "nextNodeId": "neighbor_tips"
+          },
+          {
+            "id": "bye",
+            "label": "Walk safe, Sera.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "square_life": {
+        "id": "square_life",
+        "lines": [
+          "Merchants tend their awnings all morning and afternoon, Toby and Maren haul fresh crops up from the farm lane, and villagers gather near the well at dusk.",
+          "Wait until nightfall and everyone heads home while Alden and I watch the lamps."
+        ],
+        "nextNodeId": "hub"
+      },
+      "neighbor_tips": {
+        "id": "neighbor_tips",
+        "lines": [
+          "Clara and Rowan are gathering herbs to help the village, Lyra needs Meadow Herbs for remedies, Toby sends wheat up to Bram, and Alden and Garrick both seek trail scouts.",
+          "Press J anytime to inspect your Quest Journal!"
+        ],
+        "nextNodeId": "hub"
+      },
+      "farewell": {
+        "id": "farewell",
+        "lines": ["Walk safe, explorer."],
+        "nextNodeId": null
+      }
+    }
+  },
+
+  "npc-doran": {
+    "npcId": "npc-doran",
+    "defaultStartNodeId": "greet_day",
+    "entryRules": [
+      {
+        "condition": {
+          "questId": "quest-the-blacksmith",
+          "questStatusIn": ["ready"]
+        },
+        "nodeId": "smith_ready"
+      },
+      {
+        "condition": {
+          "periodIn": ["evening", "night"]
+        },
+        "nodeId": "greet_evening"
+      }
+    ],
+    "nodes": {
+      "greet_day": {
+        "id": "greet_day",
+        "lines": [
+          "Clang! Hear that anvil ring? Hot coals, raw iron ore, and honest steel keep explorers breathing out there.",
+          "Bring me dulled blades if you ever need whetting, or try forging your own Iron Sword!"
+        ],
+        "choices": [
+          {
+            "id": "ask-smith-quest",
+            "label": "Can you teach me to forge an Iron Sword?",
+            "nextNodeId": "smith_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-the-blacksmith",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-smith-progress",
+            "label": "About the Iron Sword forging task...",
+            "nextNodeId": "smith_progress",
+            "questTag": "progress",
+            "condition": {
+              "questId": "quest-the-blacksmith",
+              "questStatusIn": ["active"]
+            }
+          },
+          {
+            "id": "repair-weapons",
+            "label": "Repair all my equipped/bag weapons (15 Coins).",
+            "nextNodeId": "repair_done",
+            "condition": { "minCoins": 15 },
+            "effects": [
+              { "type": "repairWeapons", "costCoins": 15 }
+            ]
+          },
+          {
+            "id": "ask-ores",
+            "label": "Where do I find Iron Ore and Coal?",
+            "nextNodeId": "ore_tips"
+          },
+          {
+            "id": "bye",
+            "label": "Keep the forge hot, Doran.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "greet_evening": {
+        "id": "greet_evening",
+        "lines": [
+          "Banking the forge embers for tonight, traveler. Come back by day for anvil lessons or repairs."
+        ],
+        "choices": [
+          {
+            "id": "ask-smith-quest",
+            "label": "Can you teach me to forge an Iron Sword?",
+            "nextNodeId": "smith_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-the-blacksmith",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "repair-weapons",
+            "label": "Repair all my weapons (15 Coins).",
+            "nextNodeId": "repair_done",
+            "condition": { "minCoins": 15 },
+            "effects": [
+              { "type": "repairWeapons", "costCoins": 15 }
+            ]
+          },
+          {
+            "id": "bye",
+            "label": "Goodnight, Doran.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "smith_offer": {
+        "id": "smith_offer",
+        "questId": "quest-the-blacksmith",
+        "lines": [
+          "Every true adventurer ought to craft their own steel once!",
+          "Mine 4 Iron Ore from rocky hills or shafts, open your Crafting tab to forge an Iron Sword, and show me your blade!"
+        ],
+        "choices": [
+          {
+            "id": "accept-smith",
+            "label": "I'll mine Iron Ore and forge an Iron Sword!",
+            "nextNodeId": "smith_accepted",
+            "questTag": "accept",
+            "effects": [
+              { "type": "startQuest", "questId": "quest-the-blacksmith" },
+              {
+                "type": "notice",
+                "message": "Quest Accepted: Hammer and Anvil (Collect 4 Iron Ore & Craft Iron Sword)."
+              }
+            ]
+          },
+          {
+            "id": "decline-smith",
+            "label": "Not right now, Doran.",
+            "nextNodeId": "greet_day"
+          }
+        ]
+      },
+      "smith_accepted": {
+        "id": "smith_accepted",
+        "questId": "quest-the-blacksmith",
+        "lines": [
+          "Look for dark metallic ore veins near mountain ridges, Sunstone Mine, or crystal caves. Remember you'll also need 2 Coal and 2 Wood for the Iron Sword recipe!"
+        ],
+        "nextNodeId": null
+      },
+      "smith_progress": {
+        "id": "smith_progress",
+        "questId": "quest-the-blacksmith",
+        "lines": [
+          "Gather 4 Iron Ore (plus 2 Coal and 2 Wood), then open your Inventory (Tab) -> Crafting tab to forge an Iron Sword."
+        ],
+        "nextNodeId": "greet_day"
+      },
+      "smith_ready": {
+        "id": "smith_ready",
+        "questId": "quest-the-blacksmith",
+        "lines": [
+          "Hah! Look at that fresh Iron Sword gleaming in the firelight! Fine balance!"
+        ],
+        "choices": [
+          {
+            "id": "complete-smith",
+            "label": "Show Doran your newly forged Iron Sword.",
+            "nextNodeId": "smith_completed",
+            "questTag": "complete",
+            "effects": [
+              { "type": "completeQuest", "questId": "quest-the-blacksmith" }
+            ]
+          },
+          {
+            "id": "later-smith",
+            "label": "Let's talk repairs first.",
+            "nextNodeId": "greet_day"
+          }
+        ]
+      },
+      "smith_completed": {
+        "id": "smith_completed",
+        "questId": "quest-the-blacksmith",
+        "lines": [
+          "Masterwork swing! Take 125 XP, 65 coins, and 4 Coal to step up to a Steel Sword next."
+        ],
+        "nextNodeId": null
+      },
+      "repair_done": {
+        "id": "repair_done",
+        "lines": [
+          "Quick pass on the grindstone and fresh oil on the edge—good as new!"
+        ],
+        "nextNodeId": "greet_day"
+      },
+      "ore_tips": {
+        "id": "ore_tips",
+        "lines": [
+          "Iron Ore and Coal veins spawn along rocky mountain slopes and inside caves like Sunstone Mine and Echoing Crystal Cave."
+        ],
+        "nextNodeId": "greet_day"
+      },
+      "farewell": {
+        "id": "farewell",
+        "lines": ["Strike true, traveler!"],
+        "nextNodeId": null
+      }
+    }
+  },
+
+  "npc-finnian": {
+    "npcId": "npc-finnian",
+    "defaultStartNodeId": "greet_day",
+    "entryRules": [
+      {
+        "condition": {
+          "questId": "quest-the-hunter",
+          "questStatusIn": ["ready"]
+        },
+        "nodeId": "hunter_ready"
+      },
+      {
+        "condition": {
+          "periodIn": ["evening", "night"]
+        },
+        "nodeId": "greet_evening"
+      }
+    ],
+    "nodes": {
+      "greet_day": {
+        "id": "greet_day",
+        "lines": [
+          "Easy footsteps out in the brush, friend. Wild deer and grazing livestock stay calm unless startled by steel or arrows.",
+          "Hunt responsibly—gather meat for the hearth, hide for leather, and feathers for arrows."
+        ],
+        "choices": [
+          {
+            "id": "ask-hunter-quest",
+            "label": "Any hunting tasks around Oakhollow?",
+            "nextNodeId": "hunter_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-the-hunter",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-hunter-progress",
+            "label": "About the Master Hunter task...",
+            "nextNodeId": "hunter_progress",
+            "questTag": "progress",
+            "condition": {
+              "questId": "quest-the-hunter",
+              "questStatusIn": ["active"]
+            }
+          },
+          {
+            "id": "ask-drops",
+            "label": "What materials do different animals drop?",
+            "nextNodeId": "drops_guide"
+          },
+          {
+            "id": "bye",
+            "label": "Happy hunting, Finnian.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "greet_evening": {
+        "id": "greet_evening",
+        "lines": [
+          "Twilight makes tracking tough—time to skin our catches and rest indoors."
+        ],
+        "choices": [
+          {
+            "id": "ask-hunter-quest",
+            "label": "Any hunting tasks around Oakhollow?",
+            "nextNodeId": "hunter_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-the-hunter",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "bye",
+            "label": "Goodnight, Finnian.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "hunter_offer": {
+        "id": "hunter_offer",
+        "questId": "quest-the-hunter",
+        "lines": [
+          "The village larder could use fresh roasts before winter winds pick up.",
+          "Hunt 4 animals in the wilds, gather 3 Raw Meat from their loot drops, and bring the cuts to me for 130 XP, 70 coins, and 10 Arrows!"
+        ],
+        "choices": [
+          {
+            "id": "accept-hunter",
+            "label": "I'll hunt 4 animals and bring 3 Raw Meat.",
+            "nextNodeId": "hunter_accepted",
+            "questTag": "accept",
+            "effects": [
+              { "type": "startQuest", "questId": "quest-the-hunter" },
+              {
+                "type": "notice",
+                "message": "Quest Accepted: Hunter's Trail (Hunt 4 animals & deliver 3 Raw Meat)."
+              }
+            ]
+          },
+          {
+            "id": "decline-hunter",
+            "label": "Not right now.",
+            "nextNodeId": "greet_day"
+          }
+        ]
+      },
+      "hunter_accepted": {
+        "id": "hunter_accepted",
+        "questId": "quest-the-hunter",
+        "lines": [
+          "Use a bow, spear, or blade on deer, cows, sheep, chickens, or wolves—and remember to pick up the glowing loot drops afterward!"
+        ],
+        "nextNodeId": null
+      },
+      "hunter_progress": {
+        "id": "hunter_progress",
+        "questId": "quest-the-hunter",
+        "lines": [
+          "Hunt 4 wild animals and collect 3 Raw Meat from their drops, then bring them back to me."
+        ],
+        "nextNodeId": "greet_day"
+      },
+      "hunter_ready": {
+        "id": "hunter_ready",
+        "questId": "quest-the-hunter",
+        "lines": [
+          "Clean shots and steady hands! Got those 3 cuts of Raw Meat ready?"
+        ],
+        "choices": [
+          {
+            "id": "complete-hunter",
+            "label": "Deliver 3 Raw Meat to Finnian.",
+            "nextNodeId": "hunter_completed",
+            "questTag": "complete",
+            "effects": [
+              { "type": "completeQuest", "questId": "quest-the-hunter" }
+            ]
+          },
+          {
+            "id": "later-hunter",
+            "label": "Hold on a moment.",
+            "nextNodeId": "greet_day"
+          }
+        ]
+      },
+      "hunter_completed": {
+        "id": "hunter_completed",
+        "questId": "quest-the-hunter",
+        "lines": [
+          "Finest cuts in the valley! Here are 130 XP, 70 coins, and 10 Hunting Arrows for your quiver."
+        ],
+        "nextNodeId": null
+      },
+      "drops_guide": {
+        "id": "drops_guide",
+        "lines": [
+          "Deer yield Meat & Hide; Cows drop Meat & Leather; Sheep give Meat & Wool; Chickens drop Meat & Feathers; Wolves & Bears drop Fur."
+        ],
+        "nextNodeId": "greet_day"
+      },
+      "farewell": {
+        "id": "farewell",
+        "lines": ["Walk softly on the moss, hunter."],
+        "nextNodeId": null
+      }
+    }
+  },
+
+  "npc-corvin": {
+    "npcId": "npc-corvin",
+    "defaultStartNodeId": "greet_day",
+    "entryRules": [
+      {
+        "condition": {
+          "questId": "quest-build-shelter",
+          "questStatusIn": ["ready"]
+        },
+        "nodeId": "shelter_ready"
+      },
+      {
+        "condition": {
+          "periodIn": ["evening", "night"]
+        },
+        "nodeId": "greet_evening"
+      }
+    ],
+    "nodes": {
+      "greet_day": {
+        "id": "greet_day",
+        "lines": [
+          "Morning! Nothing smells finer than fresh-split pine and oak timber.",
+          "With 10 Wood and 5 Plant Fiber, anyone can craft a sturdy Camp Bed for sleeping anywhere in the wild."
+        ],
+        "choices": [
+          {
+            "id": "ask-shelter-quest",
+            "label": "Show me how to craft my own Camp Bed.",
+            "nextNodeId": "shelter_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-build-shelter",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-shelter-progress",
+            "label": "About crafting the Camp Bed...",
+            "nextNodeId": "shelter_progress",
+            "questTag": "progress",
+            "condition": {
+              "questId": "quest-build-shelter",
+              "questStatusIn": ["active"]
+            }
+          },
+          {
+            "id": "ask-harvest",
+            "label": "Which trees can I harvest for Wood?",
+            "nextNodeId": "harvest_tips"
+          },
+          {
+            "id": "bye",
+            "label": "Keep chopping, Corvin.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "greet_evening": {
+        "id": "greet_evening",
+        "lines": [
+          "Stacking the last logs before dark. Don't forget to craft or find a bed before midnight!"
+        ],
+        "choices": [
+          {
+            "id": "ask-shelter-quest",
+            "label": "Show me how to craft my own Camp Bed.",
+            "nextNodeId": "shelter_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-build-shelter",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "bye",
+            "label": "Goodnight, Corvin.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "shelter_offer": {
+        "id": "shelter_offer",
+        "questId": "quest-build-shelter",
+        "lines": [
+          "Every explorer needs a bed of their own! Gather 10 Wood from marked trees or fallen branches and 5 Plant Fiber from reed bushes.",
+          "Then open your Inventory -> Crafting tab to craft a Crafted Bed, and come back to show me!"
+        ],
+        "choices": [
+          {
+            "id": "accept-shelter",
+            "label": "I'll gather Wood & Fiber and craft a Bed.",
+            "nextNodeId": "shelter_accepted",
+            "questTag": "accept",
+            "effects": [
+              { "type": "startQuest", "questId": "quest-build-shelter" },
+              {
+                "type": "notice",
+                "message": "Quest Accepted: Build Your Shelter (Collect Wood & Fiber, Craft Bed)."
+              }
+            ]
+          },
+          {
+            "id": "decline-shelter",
+            "label": "Later, Corvin.",
+            "nextNodeId": "greet_day"
+          }
+        ]
+      },
+      "shelter_accepted": {
+        "id": "shelter_accepted",
+        "questId": "quest-build-shelter",
+        "lines": [
+          "You'll keep the bed after crafting—just use it from your Inventory whenever evening falls!"
+        ],
+        "nextNodeId": null
+      },
+      "shelter_progress": {
+        "id": "shelter_progress",
+        "questId": "quest-build-shelter",
+        "lines": [
+          "Collect 10 Wood and 5 Plant Fiber, then craft a Bed in your Crafting tab."
+        ],
+        "nextNodeId": "greet_day"
+      },
+      "shelter_ready": {
+        "id": "shelter_ready",
+        "questId": "quest-build-shelter",
+        "lines": [
+          "Look at that tight joinery—ten logs and woven fiber put together like a master carpenter!"
+        ],
+        "choices": [
+          {
+            "id": "complete-shelter",
+            "label": "Finish the shelter-crafting lesson.",
+            "nextNodeId": "shelter_completed",
+            "questTag": "complete",
+            "effects": [
+              { "type": "completeQuest", "questId": "quest-build-shelter" }
+            ]
+          }
+        ]
+      },
+      "shelter_completed": {
+        "id": "shelter_completed",
+        "questId": "quest-build-shelter",
+        "lines": [
+          "Well done! Here are 95 XP, 40 coins, and a warm Sunstone Hearth Loaf."
+        ],
+        "nextNodeId": null
+      },
+      "harvest_tips": {
+        "id": "harvest_tips",
+        "lines": [
+          "Look for notched timber trees, fallen oak logs, and green fiber bushes around forest clearings and trails. Approach and press E to harvest!"
+        ],
+        "nextNodeId": "greet_day"
+      },
+      "farewell": {
+        "id": "farewell",
+        "lines": ["Swing clean, traveler!"],
+        "nextNodeId": null
+      }
+    }
+  },
+
+  "npc-thorne": {
+    "npcId": "npc-thorne",
+    "defaultStartNodeId": "greet_day",
+    "entryRules": [
+      {
+        "condition": {
+          "questId": "quest-first-night",
+          "questStatusIn": ["ready"]
+        },
+        "nodeId": "night_ready"
+      },
+      {
+        "condition": {
+          "questId": "quest-the-village",
+          "questStatusIn": ["ready"]
+        },
+        "nodeId": "settlements_ready"
+      },
+      {
+        "condition": {
+          "periodIn": ["evening", "night"]
+        },
+        "nodeId": "greet_evening"
+      }
+    ],
+    "nodes": {
+      "greet_day": {
+        "id": "greet_day",
+        "lines": [
+          "Blessings upon your road, young explorer! Seven settlements now shine across this great valley.",
+          "From Pinehaven in the western woods to Grandcross in the east, every road invites discovery."
+        ],
+        "choices": [
+          {
+            "id": "ask-night-quest",
+            "label": "Do you have advice for surviving my first night?",
+            "nextNodeId": "night_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-first-night",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-settlements-quest",
+            "label": "Tell me about exploring the other villages.",
+            "nextNodeId": "settlements_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-the-village",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-realm",
+            "label": "Name all the settlements in these lands.",
+            "nextNodeId": "realm_lore"
+          },
+          {
+            "id": "bye",
+            "label": "Walk in peace, Elder Thorne.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "greet_evening": {
+        "id": "greet_evening",
+        "lines": [
+          "The sky grows deep and quiet. Villagers will soon head inside their homes to sleep until morning."
+        ],
+        "choices": [
+          {
+            "id": "ask-night-quest",
+            "label": "How should I spend my first night safely?",
+            "nextNodeId": "night_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-first-night",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "ask-settlements-quest",
+            "label": "Tell me about the other villages.",
+            "nextNodeId": "settlements_offer",
+            "questTag": "accept",
+            "condition": {
+              "questId": "quest-the-village",
+              "questStatusIn": ["available"]
+            }
+          },
+          {
+            "id": "bye",
+            "label": "Rest well, Elder Thorne.",
+            "nextNodeId": "farewell"
+          }
+        ]
+      },
+      "night_offer": {
+        "id": "night_offer",
+        "questId": "quest-first-night",
+        "lines": [
+          "When evening falls, approach any village house bed, explorer camp bed, or a Camp Bed you've crafted and press Sleep.",
+          "Sleep until morning to restore your strength, then speak with me at dawn!"
+        ],
+        "choices": [
+          {
+            "id": "accept-night",
+            "label": "I'll rest in a bed tonight and greet you at dawn.",
+            "nextNodeId": "night_accepted",
+            "questTag": "accept",
+            "effects": [
+              { "type": "startQuest", "questId": "quest-first-night" },
+              {
+                "type": "notice",
+                "message": "Quest Accepted: Through the Quiet Night (Sleep in a bed until morning)."
+              }
+            ]
+          },
+          {
+            "id": "decline-night",
+            "label": "Maybe later, Elder.",
+            "nextNodeId": "greet_day"
+          }
+        ]
+      },
+      "night_accepted": {
+        "id": "night_accepted",
+        "questId": "quest-first-night",
+        "lines": [
+          "Sweet dreams under the stars or a warm cottage roof!"
+        ],
+        "nextNodeId": null
+      },
+      "night_ready": {
+        "id": "night_ready",
+        "questId": "quest-first-night",
+        "lines": [
+          "Good morning! You look rested and ready for the wide world ahead!"
+        ],
+        "choices": [
+          {
+            "id": "complete-night",
+            "label": "Greet Elder Thorne after a restful night.",
+            "nextNodeId": "night_completed",
+            "questTag": "complete",
+            "effects": [
+              { "type": "completeQuest", "questId": "quest-first-night" }
+            ]
+          }
+        ]
+      },
+      "night_completed": {
+        "id": "night_completed",
+        "questId": "quest-first-night",
+        "lines": [
+          "A rested traveler sees twice as far! Take 100 XP and 50 coins."
+        ],
+        "nextNodeId": null
+      },
+      "settlements_offer": {
+        "id": "settlements_offer",
+        "questId": "quest-the-village",
+        "lines": [
+          "Our valley stretches miles in every direction now! Discover at least 8 regional villages, mines, or ruined camps and tell me what you saw."
+        ],
+        "choices": [
+          {
+            "id": "accept-settlements",
+            "label": "I'll chart the distant villages and ruins.",
+            "nextNodeId": "settlements_accepted",
+            "questTag": "accept",
+            "effects": [
+              { "type": "startQuest", "questId": "quest-the-village" },
+              {
+                "type": "notice",
+                "message": "Quest Accepted: Seven Settlements (Discover 8 locations/villages)."
+              }
+            ]
+          },
+          {
+            "id": "decline-settlements",
+            "label": "Not yet.",
+            "nextNodeId": "greet_day"
+          }
+        ]
+      },
+      "settlements_accepted": {
+        "id": "settlements_accepted",
+        "questId": "quest-the-village",
+        "lines": [
+          "Press M to view your expanded World Map anytime you reach a new settlement!"
+        ],
+        "nextNodeId": null
+      },
+      "settlements_ready": {
+        "id": "settlements_ready",
+        "questId": "quest-the-village",
+        "lines": [
+          "Your footsteps have crossed distant villages, camps, and ruins! Let's record your chronicle!"
+        ],
+        "choices": [
+          {
+            "id": "complete-settlements",
+            "label": "Share your discoveries across the seven settlements.",
+            "nextNodeId": "settlements_completed",
+            "questTag": "complete",
+            "effects": [
+              { "type": "completeQuest", "questId": "quest-the-village" }
+            ]
+          }
+        ]
+      },
+      "settlements_completed": {
+        "id": "settlements_completed",
+        "questId": "quest-the-village",
+        "lines": [
+          "Truly a legend of the valley! Accept 150 XP and 90 coins."
+        ],
+        "nextNodeId": null
+      },
+      "realm_lore": {
+        "id": "realm_lore",
+        "lines": [
+          "Oakhollow lies at the heart; Pinehaven shelters woodcutters west; Greenfields farms south; Cragwatch mines iron north; Riverford fishes the stream; Windmere grazes eastern plains; and Grandcross trades near the dunes."
+        ],
+        "nextNodeId": "greet_day"
+      },
+      "farewell": {
+        "id": "farewell",
+        "lines": ["Walk in wisdom, traveler."],
+        "nextNodeId": null
+      }
+    }
+  }
+}

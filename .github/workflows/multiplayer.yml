@@ -1,0 +1,124 @@
+name: Multiplayer Worker CI & Deploy (Cloudflare)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "workers/multiplayer/**"
+      - "shared/multiplayerProtocol.ts"
+      - "wrangler.toml"
+      - "_verify_mp_room.ts"
+      - ".github/workflows/multiplayer.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "workers/multiplayer/**"
+      - "shared/multiplayerProtocol.ts"
+      - "wrangler.toml"
+      - "_verify_mp_room.ts"
+      - ".github/workflows/multiplayer.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Cloudflare Worker deployment environment"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - staging
+          - production
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-build:
+    name: Verify & Build Multiplayer Worker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json', '**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Typecheck frontend & shared protocol
+        run: npm run lint
+
+      - name: Typecheck Cloudflare Worker & Durable Objects
+        run: npm run worker:typecheck
+
+      - name: Run multiplayer authoritative security & sync tests
+        run: npm run test:multiplayer
+
+      - name: Build frontend bundle
+        env:
+          VITE_APP_ENV: ${{ vars.VITE_APP_ENV || 'production' }}
+          VITE_MULTIPLAYER_URL: ${{ vars.VITE_MULTIPLAYER_URL || 'https://world-of-adventure-multiplayer.abdelhaq-elhafidy-41.workers.dev' }}
+          VITE_PUBLIC_APP_URL: ${{ vars.VITE_PUBLIC_APP_URL || '' }}
+        run: npm run build
+
+      - name: Install Cloudflare Worker dependencies
+        working-directory: workers/multiplayer
+        run: npm ci
+
+      - name: Build & dry-run Cloudflare Worker (staging & production)
+        working-directory: workers/multiplayer
+        run: |
+          npm run build
+          npm run build:staging
+          npm run build:production
+
+  deploy:
+    name: Deploy Multiplayer Worker to Cloudflare
+    runs-on: ubuntu-latest
+    needs: verify-and-build
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install root dependencies & build frontend
+        env:
+          VITE_APP_ENV: ${{ vars.VITE_APP_ENV || 'production' }}
+          VITE_MULTIPLAYER_URL: ${{ vars.VITE_MULTIPLAYER_URL || 'https://world-of-adventure-multiplayer.abdelhaq-elhafidy-41.workers.dev' }}
+          VITE_PUBLIC_APP_URL: ${{ vars.VITE_PUBLIC_APP_URL || '' }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install Worker dependencies & verify bundle
+        working-directory: workers/multiplayer
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy Cloudflare Worker & Durable Objects
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: "workers/multiplayer"
+          command: deploy --env ${{ inputs.environment || 'production' }}

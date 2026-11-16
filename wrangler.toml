@@ -1,0 +1,115 @@
+name = "world-of-adventure-multiplayer"
+main = "workers/multiplayer/src/index.ts"
+compatibility_date = "2025-02-01"
+workers_dev = true
+
+# ==============================================================================
+# Default / Development Configuration (`npx wrangler dev` / `npx wrangler deploy`)
+# Secrets MUST be configured via `npx wrangler secret put <KEY>` or GitHub
+# Actions Secrets — never store API tokens or secrets in this file.
+# ==============================================================================
+[vars]
+ENVIRONMENT = "development"
+ALLOWED_ORIGINS = "*"
+MAX_ROOMS_PER_LIST = "50"
+HOST_DISCONNECT_GRACE_MS = "12000"
+PLAYER_RECONNECT_GRACE_MS = "45000"
+
+[[durable_objects.bindings]]
+name = "MULTIPLAYER_ROOMS"
+class_name = "MultiplayerRoomDO"
+
+[[durable_objects.bindings]]
+name = "ROOM_DIRECTORY"
+class_name = "RoomDirectoryDO"
+
+[[durable_objects.bindings]]
+name = "PLAYER_PROFILES"
+class_name = "PlayerProfileDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MultiplayerRoomDO", "RoomDirectoryDO"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["PlayerProfileDO"]
+
+# ==============================================================================
+# Development Environment (`npx wrangler deploy --env development`)
+# ==============================================================================
+[env.development]
+name = "world-of-adventure-multiplayer-dev"
+workers_dev = true
+
+[env.development.vars]
+ENVIRONMENT = "development"
+ALLOWED_ORIGINS = "*"
+MAX_ROOMS_PER_LIST = "50"
+HOST_DISCONNECT_GRACE_MS = "12000"
+PLAYER_RECONNECT_GRACE_MS = "45000"
+
+[[env.development.durable_objects.bindings]]
+name = "MULTIPLAYER_ROOMS"
+class_name = "MultiplayerRoomDO"
+
+[[env.development.durable_objects.bindings]]
+name = "ROOM_DIRECTORY"
+class_name = "RoomDirectoryDO"
+
+[[env.development.durable_objects.bindings]]
+name = "PLAYER_PROFILES"
+class_name = "PlayerProfileDO"
+
+# ==============================================================================
+# Staging Environment (`npx wrangler deploy --env staging`)
+# ==============================================================================
+[env.staging]
+name = "world-of-adventure-multiplayer-staging"
+workers_dev = true
+
+[env.staging.vars]
+ENVIRONMENT = "staging"
+ALLOWED_ORIGINS = "*"
+MAX_ROOMS_PER_LIST = "50"
+HOST_DISCONNECT_GRACE_MS = "12000"
+PLAYER_RECONNECT_GRACE_MS = "45000"
+
+[[env.staging.durable_objects.bindings]]
+name = "MULTIPLAYER_ROOMS"
+class_name = "MultiplayerRoomDO"
+
+[[env.staging.durable_objects.bindings]]
+name = "ROOM_DIRECTORY"
+class_name = "RoomDirectoryDO"
+
+[[env.staging.durable_objects.bindings]]
+name = "PLAYER_PROFILES"
+class_name = "PlayerProfileDO"
+
+# ==============================================================================
+# Production Environment (`npx wrangler deploy --env production`)
+# ==============================================================================
+[env.production]
+name = "world-of-adventure-multiplayer-production"
+workers_dev = true
+
+[env.production.vars]
+ENVIRONMENT = "production"
+# Override ALLOWED_ORIGINS in Cloudflare Dashboard or --var for strict domain locking
+ALLOWED_ORIGINS = "*"
+MAX_ROOMS_PER_LIST = "50"
+HOST_DISCONNECT_GRACE_MS = "12000"
+PLAYER_RECONNECT_GRACE_MS = "45000"
+
+[[env.production.durable_objects.bindings]]
+name = "MULTIPLAYER_ROOMS"
+class_name = "MultiplayerRoomDO"
+
+[[env.production.durable_objects.bindings]]
+name = "ROOM_DIRECTORY"
+class_name = "RoomDirectoryDO"
+
+[[env.production.durable_objects.bindings]]
+name = "PLAYER_PROFILES"
+class_name = "PlayerProfileDO"

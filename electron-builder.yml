@@ -1,0 +1,43 @@
+appId: com.worldofadventure.game
+productName: World of Adventure
+copyright: Copyright © 2026 World of Adventure
+asar: true
+publish: null
+
+directories:
+  output: release
+
+files:
+  - dist/**/*
+  - electron/main.cjs
+  - electron/preload.cjs
+  - package.json
+  - "!**/*.map"
+  - "!electron/dev.mjs"
+  - "!node_modules/**/*"
+  - "!android/**/*"
+  - "!src/**/*"
+  - "!docs/**/*"
+  - "!.github/**/*"
+  - "!server.ts"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+
+nsis:
+  artifactName: World-of-Adventure-Setup-${version}.exe
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: World of Adventure
+
+portable:
+  artifactName: World-of-Adventure-Portable-${version}.exe

@@ -1,0 +1,183 @@
+[
+  {
+    "id": "recipe-bed",
+    "resultItemId": "bed",
+    "resultCount": 1,
+    "category": "camp",
+    "ingredients": [
+      { "itemId": "wood", "count": 10 },
+      { "itemId": "fiber", "count": 5 }
+    ]
+  },
+  {
+    "id": "recipe-wooden-sword",
+    "resultItemId": "wooden-sword",
+    "resultCount": 1,
+    "category": "weapon",
+    "ingredients": [
+      { "itemId": "wood", "count": 6 },
+      { "itemId": "fiber", "count": 2 }
+    ]
+  },
+  {
+    "id": "recipe-hunter-knife",
+    "resultItemId": "hunter-knife",
+    "resultCount": 1,
+    "category": "weapon",
+    "ingredients": [
+      { "itemId": "iron-ore", "count": 2 },
+      { "itemId": "wood", "count": 2 },
+      { "itemId": "leather", "count": 1 }
+    ]
+  },
+  {
+    "id": "recipe-spear",
+    "resultItemId": "spear",
+    "resultCount": 1,
+    "category": "weapon",
+    "ingredients": [
+      { "itemId": "wood", "count": 5 },
+      { "itemId": "iron-ore", "count": 2 },
+      { "itemId": "fiber", "count": 2 }
+    ]
+  },
+  {
+    "id": "recipe-iron-sword",
+    "resultItemId": "iron-sword",
+    "resultCount": 1,
+    "category": "weapon",
+    "ingredients": [
+      { "itemId": "iron-ore", "count": 4 },
+      { "itemId": "coal", "count": 2 },
+      { "itemId": "wood", "count": 2 }
+    ]
+  },
+  {
+    "id": "recipe-steel-sword",
+    "resultItemId": "steel-sword",
+    "resultCount": 1,
+    "category": "weapon",
+    "ingredients": [
+      { "itemId": "iron-ore", "count": 6 },
+      { "itemId": "coal", "count": 4 },
+      { "itemId": "leather", "count": 2 }
+    ]
+  },
+  {
+    "id": "recipe-battle-axe",
+    "resultItemId": "battle-axe",
+    "resultCount": 1,
+    "category": "weapon",
+    "ingredients": [
+      { "itemId": "iron-ore", "count": 5 },
+      { "itemId": "coal", "count": 2 },
+      { "itemId": "wood", "count": 4 }
+    ]
+  },
+  {
+    "id": "recipe-hunter-bow",
+    "resultItemId": "hunter-bow",
+    "resultCount": 1,
+    "category": "weapon",
+    "ingredients": [
+      { "itemId": "wood", "count": 6 },
+      { "itemId": "fiber", "count": 4 }
+    ]
+  },
+  {
+    "id": "recipe-crossbow",
+    "resultItemId": "crossbow",
+    "resultCount": 1,
+    "category": "weapon",
+    "ingredients": [
+      { "itemId": "wood", "count": 6 },
+      { "itemId": "iron-ore", "count": 4 },
+      { "itemId": "fiber", "count": 3 }
+    ]
+  },
+  {
+    "id": "recipe-arrow",
+    "resultItemId": "arrow",
+    "resultCount": 8,
+    "category": "weapon",
+    "ingredients": [
+      { "itemId": "wood", "count": 2 },
+      { "itemId": "feathers", "count": 2 },
+      { "itemId": "stone", "count": 1 }
+    ]
+  },
+  {
+    "id": "recipe-leather-armor",
+    "resultItemId": "leather-armor",
+    "resultCount": 1,
+    "category": "armor",
+    "ingredients": [
+      { "itemId": "leather", "count": 5 },
+      { "itemId": "wool", "count": 2 },
+      { "itemId": "fiber", "count": 3 }
+    ]
+  },
+  {
+    "id": "recipe-cooked-meat",
+    "resultItemId": "cooked-meat",
+    "resultCount": 1,
+    "category": "provisions",
+    "ingredients": [
+      { "itemId": "meat", "count": 1 },
+      { "itemId": "wood", "count": 1 }
+    ]
+  },
+  {
+    "id": "recipe-torch",
+    "resultItemId": "torch",
+    "resultCount": 2,
+    "category": "camp",
+    "ingredients": [
+      { "itemId": "wood", "count": 2 },
+      { "itemId": "coal", "count": 1 },
+      { "itemId": "fiber", "count": 1 }
+    ]
+  },
+  {
+    "id": "recipe-berry-tonic",
+    "resultItemId": "apothecary-tonic",
+    "resultCount": 1,
+    "category": "provisions",
+    "ingredients": [
+      { "itemId": "berries", "count": 2 },
+      { "itemId": "mushroom", "count": 1 },
+      { "itemId": "flower", "count": 1 }
+    ]
+  },
+  {
+    "id": "recipe-desert-tonic",
+    "resultItemId": "apothecary-tonic",
+    "resultCount": 1,
+    "category": "provisions",
+    "ingredients": [
+      { "itemId": "desert-plant", "count": 2 },
+      { "itemId": "cactus", "count": 1 }
+    ]
+  },
+  {
+    "id": "recipe-driftwood-arrows",
+    "resultItemId": "arrow",
+    "resultCount": 6,
+    "category": "weapon",
+    "ingredients": [
+      { "itemId": "driftwood", "count": 2 },
+      { "itemId": "stone", "count": 1 },
+      { "itemId": "fiber", "count": 1 }
+    ]
+  },
+  {
+    "id": "recipe-hearth-loaf",
+    "resultItemId": "hearth-loaf",
+    "resultCount": 1,
+    "category": "provisions",
+    "ingredients": [
+      { "itemId": "wheat", "count": 2 },
+      { "itemId": "wood", "count": 1 }
+    ]
+  }
+]

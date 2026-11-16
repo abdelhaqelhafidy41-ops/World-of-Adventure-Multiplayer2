@@ -1,0 +1,429 @@
+name: Automated GitHub Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-web:
+    name: Build Web Version
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate version tag
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag '$TAG' must match semantic version format such as v1.0.0."
+            exit 1
+          fi
+          echo "Verified release tag: $TAG"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json', '**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install npm dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Run TypeScript check
+        run: npm run lint
+
+      - name: Build web production bundle
+        env:
+          VITE_APP_ENV: ${{ vars.VITE_APP_ENV || 'production' }}
+          VITE_MULTIPLAYER_URL: ${{ vars.VITE_MULTIPLAYER_URL || 'https://world-of-adventure-multiplayer.abdelhaq-elhafidy-41.workers.dev' }}
+          VITE_PUBLIC_APP_URL: ${{ vars.VITE_PUBLIC_APP_URL || '' }}
+        run: npm run build
+
+      - name: Upload web dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-web-dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 1
+
+  build-android:
+    name: Build Android APK & AAB
+    runs-on: ubuntu-latest
+    needs: build-web
+
+    outputs:
+      signed: ${{ steps.android-build.outputs.signed }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json', '**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install npm dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Download built web assets
+        uses: actions/download-artifact@v4
+        with:
+          name: release-web-dist
+          path: dist
+
+      - name: Sync Capacitor Android project
+        run: npx cap sync android
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Grant execute permission for Gradle wrapper
+        run: chmod +x android/gradlew
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Android APK and AAB
+        id: android-build
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION_NAME="${TAG#v}"
+          VERSION_CODE="${RUN_NUMBER}"
+          mkdir -p release-assets
+
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
+            KEYSTORE_FILE="${{ runner.temp }}/release.jks"
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '\r\n' | base64 --decode > "$KEYSTORE_FILE"
+            chmod 600 "$KEYSTORE_FILE"
+
+            (
+              cd android
+              REQUIRE_RELEASE_SIGNING=true \
+              ANDROID_KEYSTORE_PATH="$KEYSTORE_FILE" \
+              ANDROID_KEYSTORE_PASSWORD="$ANDROID_KEYSTORE_PASSWORD" \
+              ANDROID_KEY_ALIAS="$ANDROID_KEY_ALIAS" \
+              ANDROID_KEY_PASSWORD="$ANDROID_KEY_PASSWORD" \
+              ANDROID_VERSION_NAME="$VERSION_NAME" \
+              ANDROID_VERSION_CODE="$VERSION_CODE" \
+              ./gradlew assembleRelease bundleRelease --no-daemon --stacktrace
+            )
+
+            APK_SRC="android/app/build/outputs/apk/release/app-release.apk"
+            AAB_SRC="android/app/build/outputs/bundle/release/app-release.aab"
+            jarsigner -verify "$APK_SRC"
+            jarsigner -verify "$AAB_SRC"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Android release signing secrets are not all configured. Building debug-signed APK and unsigned release AAB."
+            (
+              cd android
+              ANDROID_VERSION_NAME="$VERSION_NAME" \
+              ANDROID_VERSION_CODE="$VERSION_CODE" \
+              ./gradlew assembleDebug bundleRelease --no-daemon --stacktrace
+            )
+
+            APK_SRC="android/app/build/outputs/apk/debug/app-debug.apk"
+            AAB_SRC="android/app/build/outputs/bundle/release/app-release.aab"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ ! -f "$APK_SRC" ]; then
+            echo "::error::Expected APK not found at $APK_SRC"
+            exit 1
+          fi
+          if [ ! -f "$AAB_SRC" ]; then
+            echo "::error::Expected AAB not found at $AAB_SRC"
+            exit 1
+          fi
+
+          cp "$APK_SRC" "release-assets/World-of-Adventure-${TAG}.apk"
+          cp "$AAB_SRC" "release-assets/World-of-Adventure-${TAG}.aab"
+          ls -lh release-assets/
+
+      - name: Scrub temporary keystore
+        if: always()
+        run: rm -f "${{ runner.temp }}/release.jks"
+
+      - name: Upload Android release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-android-assets
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 1
+
+  build-windows:
+    name: Build Windows Setup & Portable EXE
+    runs-on: windows-latest
+    needs: build-web
+
+    env:
+      npm_config_cache: ~/.npm
+      npm_config_omit: ""
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json', '**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Cache Electron & electron-builder binaries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: ${{ runner.os }}-electron-${{ hashFiles('package.json', 'electron-builder.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-
+
+      - name: Clean node_modules before installation
+        shell: bash
+        run: rm -rf node_modules
+
+      - name: Install npm dependencies (including optional native bindings)
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --include=optional
+          else
+            npm install --include=optional
+          fi
+
+      - name: Verify Windows x64 Rolldown and native bindings
+        shell: bash
+        run: |
+          node -e "console.log(process.platform, process.arch)"
+          npm ls rolldown
+          npm ls @rolldown/binding-win32-x64-msvc
+          node -e "require.resolve('@rolldown/binding-win32-x64-msvc')"
+
+      - name: Download built web assets
+        uses: actions/download-artifact@v4
+        with:
+          name: release-web-dist
+          path: dist
+
+      - name: Package Windows Electron installer and portable EXE
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION_NAME="${TAG#v}"
+          npx electron-builder --win --config electron-builder.yml --publish never -c.extraMetadata.version="$VERSION_NAME"
+
+          mkdir -p release-assets
+          SETUP_SRC=$(find release -maxdepth 1 -type f -name "World-of-Adventure-Setup-*.exe" | head -n 1)
+          PORTABLE_SRC=$(find release -maxdepth 1 -type f -name "World-of-Adventure-Portable-*.exe" | head -n 1)
+
+          if [ -z "$SETUP_SRC" ] || [ ! -f "$SETUP_SRC" ]; then
+            echo "::error::Windows Setup EXE was not generated."
+            exit 1
+          fi
+          if [ -z "$PORTABLE_SRC" ] || [ ! -f "$PORTABLE_SRC" ]; then
+            echo "::error::Windows Portable EXE was not generated."
+            exit 1
+          fi
+
+          cp "$SETUP_SRC" "release-assets/World-of-Adventure-${TAG}-Windows-Setup.exe"
+          cp "$PORTABLE_SRC" "release-assets/World-of-Adventure-${TAG}-Windows-Portable.exe"
+          ls -lh release-assets/
+
+      - name: Upload Windows release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-assets
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-web, build-android, build-windows]
+
+    steps:
+      - name: Checkout repository history for release notes
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download Android release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: release-android-assets
+          path: release-bundle
+
+      - name: Download Windows release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: release-windows-assets
+          path: release-bundle
+
+      - name: Verify all required release files exist
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          REQUIRED=(
+            "release-bundle/World-of-Adventure-${TAG}.apk"
+            "release-bundle/World-of-Adventure-${TAG}.aab"
+            "release-bundle/World-of-Adventure-${TAG}-Windows-Setup.exe"
+            "release-bundle/World-of-Adventure-${TAG}-Windows-Portable.exe"
+          )
+          for f in "${REQUIRED[@]}"; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Missing required release asset: $f"
+              exit 1
+            fi
+          done
+          ls -lh release-bundle/
+
+      - name: Generate structured release notes
+        env:
+          ANDROID_SIGNED: ${{ needs.build-android.outputs.signed }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          PREV_TAG=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)
+
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="${PREV_TAG}..${TAG}"
+          else
+            RANGE="${TAG}"
+          fi
+
+          COMMITS=$(git log "$RANGE" --no-merges --pretty=format:"%s" 2>/dev/null || true)
+
+          FEATURES=""
+          FIXES=""
+          PERF=""
+
+          while IFS= read -r msg; do
+            [ -z "$msg" ] && continue
+            lower=$(printf '%s' "$msg" | tr '[:upper:]' '[:lower:]')
+            if [[ "$lower" == fix* || "$lower" == *bug* || "$lower" == *hotfix* || "$lower" == *repair* ]]; then
+              FIXES="${FIXES}- ${msg}"$'\n'
+            elif [[ "$lower" == perf* || "$lower" == *optimiz* || "$lower" == *fps* || "$lower" == *performance* || "$lower" == *cache* ]]; then
+              PERF="${PERF}- ${msg}"$'\n'
+            else
+              FEATURES="${FEATURES}- ${msg}"$'\n'
+            fi
+          done <<< "$COMMITS"
+
+          if [ -z "$FEATURES" ]; then
+            FEATURES="- Cross-platform 3D open-world build for Web, Android (Capacitor), and Windows (Electron)."$'\n'
+          fi
+          if [ -z "$FIXES" ]; then
+            FIXES="- Stability and cross-platform packaging refinements for offline asset loading and input handling."$'\n'
+          fi
+          if [ -z "$PERF" ]; then
+            PERF="- Adaptive GraphicsQualityManager, chunked Three.js asset bundling, and hardware-accelerated rendering across desktop and mobile."$'\n'
+          fi
+
+          ANDROID_SIGNING_NOTE="Android APK and AAB are signed with the configured repository release keystore."
+          if [ "$ANDROID_SIGNED" != "true" ]; then
+            ANDROID_SIGNING_NOTE="Android release keystore secrets were not configured during this build; the APK uses a debug signature and the AAB is unsigned."
+          fi
+
+          cat > release-notes.md <<EOF
+          ## Version
+          - **Release:** \`${TAG}\` (v${VERSION})
+          - **Previous Tag:** ${PREV_TAG:-Initial Release}
+
+          ## Downloads
+          - \`World-of-Adventure-${TAG}.apk\` — Android installer package
+          - \`World-of-Adventure-${TAG}.aab\` — Android App Bundle (Google Play)
+          - \`World-of-Adventure-${TAG}-Windows-Setup.exe\` — Windows x64 installer
+          - \`World-of-Adventure-${TAG}-Windows-Portable.exe\` — Windows x64 portable executable
+
+          ## New features
+          ${FEATURES}
+          ## Bug fixes
+          ${FIXES}
+          ## Performance improvements
+          ${PERF}
+          ## Known issues
+          - ${ANDROID_SIGNING_NOTE}
+          - Windows executables are not signed with an Authenticode code-signing certificate; Windows SmartScreen may show an unrecognized publisher prompt on first launch.
+          - Optional server-backed dynamic AI NPC dialogue automatically falls back to offline in-character dialogue when playing standalone Android or Windows builds offline.
+          EOF
+
+          cat release-notes.md
+
+      - name: Create or update GitHub Release and attach assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" \
+              --title "World of Adventure ${TAG}" \
+              --notes-file release-notes.md
+            gh release upload "$TAG" \
+              "release-bundle/World-of-Adventure-${TAG}.apk" \
+              "release-bundle/World-of-Adventure-${TAG}.aab" \
+              "release-bundle/World-of-Adventure-${TAG}-Windows-Setup.exe" \
+              "release-bundle/World-of-Adventure-${TAG}-Windows-Portable.exe" \
+              --clobber
+          else
+            gh release create "$TAG" \
+              "release-bundle/World-of-Adventure-${TAG}.apk" \
+              "release-bundle/World-of-Adventure-${TAG}.aab" \
+              "release-bundle/World-of-Adventure-${TAG}-Windows-Setup.exe" \
+              "release-bundle/World-of-Adventure-${TAG}-Windows-Portable.exe" \
+              --title "World of Adventure ${TAG}" \
+              --notes-file release-notes.md
+          fi
